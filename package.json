@@ -1,0 +1,13 @@
+{
+  "name": "rail-maintenance-scheduler",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node start.js",
+    "serve": "node start.js --no-open",
+    "test:ui": "python3 tests/ui_smoke.py",
+    "test:logic": "node tests/schedule_logic.mjs",
+    "test": "node tests/schedule_logic.mjs && python3 tests/ui_smoke.py"
+  }
+}
