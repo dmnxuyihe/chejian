@@ -1,0 +1,2 @@
+id,locomotive_no,repair_program_id,planned_entry_at,planned_exit_at,status,approval_status,current_version_id,mileage_km,plan_source,priority,remark
+1,HXD1C0001,1,2026-10-01T08:00:00,2026-10-05T14:10:00,SCHEDULED,APPROVED,1,500000,MANUAL,100,仅用于构架和轮驱两个流程初始化演示

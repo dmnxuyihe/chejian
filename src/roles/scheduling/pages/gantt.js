@@ -2,28 +2,29 @@ import { pageHeader } from '../../../shared/templates.js'
 import { assignmentsForSchedule, componentsForSchedule, componentOf, employeeOf, fmtFullDateTime, taskOf, workstationOf } from '../../../core/derived.js'
 import { toggleTaskLock } from '../../../core/actions.js'
 import { openModal, toast } from '../../../core/ui.js'
-
-const RANGE_START = new Date('2026-10-01T08:00:00').getTime()
-const RANGE_END = new Date('2026-10-05T14:10:00').getTime()
-const RANGE = RANGE_END - RANGE_START
-const pct = v => Math.max(0, Math.min(100, ((new Date(v).getTime()-RANGE_START)/RANGE)*100))
+import { ensureGanttRange, renderGantt, renderGanttToolbar, resetGanttRange, rowsInGanttRange, updateGanttRange } from '../../../shared/gantt.js'
 
 export const ganttPage = {
   render({ state }) {
-    return `${pageHeader('车辆任务甘特图','严格展示构架4项、轮驱16项原流程；轮对压装到反压保留48小时FS等待。')}
+    const vehicle = state.vehicleRepairs.find(v=>v.id===state.selectedVehicleRepairId) || state.vehicleRepairs[0]
+    const rows = state.schedules.filter(s=>s.vehicleRepairId===vehicle.id)
+    const filterKey=`scheduling-${vehicle.id}`
+    const range=ensureGanttRange(state,filterKey,rows,vehicle.plannedEntryAt,vehicle.plannedExitAt)
+    const visibleRows=rowsInGanttRange(rows,range)
+    const pressEnd=rows.find(x=>x.taskId===2014)?.plannedEndAt
+    return `${pageHeader('车辆任务甘特图','严格展示构架4项、轮驱16项原流程；轮对压装到反压保留48小时FS等待。',`<select class="select" style="width:190px" data-gantt-vehicle>${state.vehicleRepairs.map(v=>`<option value="${v.id}" ${v.id===vehicle.id?'selected':''}>${v.locomotiveNo}</option>`).join('')}</select>`)}
       <section class="card">
+        ${renderGanttToolbar({range,count:visibleRows.length})}
         <div class="legend-row"><span><i class="legend-box frame"></i>构架</span><span><i class="legend-box wheel"></i>轮驱</span><span><i class="legend-line"></i>48小时工艺等待</span><span>点击任务查看资源并可锁定</span></div>
-        <div class="gantt" data-test="gantt">
-          <div class="gantt-head"><div class="gantt-label-head">任务 / 工位</div><div class="gantt-scale">${['10/01','10/02','10/03','10/04','10/05'].map(d=>`<div>${d}</div>`).join('')}</div></div>
-          ${state.schedules.map(s=>{
-            const task=taskOf(state,s.taskId), left=pct(s.plannedStartAt), right=pct(s.plannedEndAt), width=Math.max(0.7,right-left)
-            const wait = task.id===2015 ? `<span class="gantt-wait" style="left:${pct('2026-10-03T11:10:00')}%;width:${pct('2026-10-05T11:10:00')-pct('2026-10-03T11:10:00')}%"></span>`:''
-            return `<div class="gantt-row"><div class="gantt-task-label"><strong>${task.name}</strong><span>${workstationOf(state,s.workstationId)?.name} · ${task.duration}分钟</span></div><div class="gantt-track">${wait}<button class="gantt-bar ${task.process==='构架'?'frame':''} ${s.isLocked?'locked':''}" style="left:${left}%;width:${width}%" data-gantt-task="${s.id}" title="${task.name}">${task.name}</button></div></div>`
-          }).join('')}
-        </div>
+        ${renderGantt({rows:visibleRows,range,labelFor:s=>taskOf(state,s.taskId)?.name||'任务',metaFor:s=>`${workstationOf(state,s.workstationId)?.name||'未分配工位'} · ${taskOf(state,s.taskId)?.duration||0}分钟`,barClassFor:s=>`${taskOf(state,s.taskId)?.process==='构架'?'frame':''} ${s.isLocked?'locked':''}`,attributesFor:s=>`data-gantt-task="${s.id}"`,overlayFor:(s,{pct})=>taskOf(state,s.taskId)?.id===2015&&pressEnd?`<span class="gantt-wait" style="left:${pct(pressEnd)}%;width:${Math.max(0,pct(s.plannedStartAt)-pct(pressEnd))}%"></span>`:''})}
       </section>`
   },
   mount(ctx) {
+    const vehicle=ctx.state.vehicleRepairs.find(v=>v.id===ctx.state.selectedVehicleRepairId)||ctx.state.vehicleRepairs[0]
+    const filterKey=`scheduling-${vehicle.id}`
+    document.querySelector('[data-gantt-vehicle]')?.addEventListener('change',e=>{ctx.state.selectedVehicleRepairId=Number(e.target.value);ctx.rerender()})
+    document.querySelectorAll('[data-gantt-range]').forEach(input=>input.addEventListener('change',()=>{updateGanttRange(ctx.state,filterKey,input.dataset.ganttRange,input.value);ctx.rerender()}))
+    document.querySelector('[data-gantt-reset]')?.addEventListener('click',()=>{resetGanttRange(ctx.state,filterKey);ctx.rerender()})
     document.querySelectorAll('[data-gantt-task]').forEach(btn=>btn.addEventListener('click',()=>{
       const s=ctx.state.schedules.find(x=>x.id===Number(btn.dataset.ganttTask)); const task=taskOf(ctx.state,s.taskId)
       const people=assignmentsForSchedule(ctx.state,s.id).map(a=>employeeOf(ctx.state,a.employeeId)?.name).filter(Boolean)

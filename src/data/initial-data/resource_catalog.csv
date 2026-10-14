@@ -1,0 +1,36 @@
+resource_type,id,code_or_no,name,team_id,workstation_id,quantity,unit,status,location
+team,1,,走行班,1,,, ,ENABLED,
+team,2,,天车班,2,,, ,ENABLED,
+employee,1,ZX001,走行01,1,,, ,ACTIVE,
+employee,2,ZX002,走行02,1,,, ,ACTIVE,
+employee,3,ZX003,走行03,1,,, ,ACTIVE,
+employee,4,ZX004,走行04,1,,, ,ACTIVE,
+employee,5,ZX005,走行05,1,,, ,ACTIVE,
+employee,6,ZX006,走行06,1,,, ,ACTIVE,
+employee,7,ZX007,走行07,1,,, ,ACTIVE,
+employee,8,ZX008,走行08,1,,, ,ACTIVE,
+employee,101,TC001,天车01,2,,, ,ACTIVE,
+employee,102,TC002,天车02,2,,, ,ACTIVE,
+employee,103,TC003,天车03,2,,, ,ACTIVE,
+employee,104,TC004,天车04,2,,, ,ACTIVE,
+employee,105,TC005,天车05,2,,, ,ACTIVE,
+employee,106,TC006,天车06,2,,, ,ACTIVE,
+employee,107,TC007,天车07,2,,, ,ACTIVE,
+employee,108,TC008,天车08,2,,, ,ACTIVE,
+workstation,1,WS-GJ,构架检修工位,,,1,,AVAILABLE,
+workstation,2,WS-LQ,轮驱检修工位,,,1,,AVAILABLE,
+equipment,1,EQ001,构架清洗机,,1,1,,AVAILABLE,检修区域
+equipment,2,EQ002,构架抛丸机,,1,1,,AVAILABLE,检修区域
+equipment,3,EQ003,构架翻转机,,1,1,,AVAILABLE,检修区域
+equipment,4,EQ004,构架喷漆机,,1,1,,AVAILABLE,检修区域
+equipment,5,EQ005,轴箱轴承分解机,,2,1,,AVAILABLE,检修区域
+equipment,6,EQ006,轮对退卸机,,2,1,,AVAILABLE,检修区域
+equipment,7,EQ007,1号天车,,2,1,,AVAILABLE,检修区域
+equipment,8,EQ008,车轴清洗机,,2,1,,AVAILABLE,检修区域
+equipment,9,EQ009,车轴磁粉探伤机,,2,1,,AVAILABLE,检修区域
+equipment,10,EQ010,车轴相控阵超声探伤机,,2,1,,AVAILABLE,检修区域
+equipment,11,EQ011,车轴测量机,,2,1,,AVAILABLE,检修区域
+equipment,12,EQ012,车轴翻转机,,2,1,,AVAILABLE,检修区域
+tool,1,TL001,扳手,,,,1,件,AVAILABLE,工具区
+material,1,MT001,钢丝刷,,,,200,件,AVAILABLE,物料区
+spare_part,1,,暂无初始化实例,,,,,,

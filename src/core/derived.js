@@ -13,7 +13,17 @@ export const fmtFullDateTime = (iso) => {
 }
 
 export const minutesBetween = (start, end) => Math.max(0, (new Date(end) - new Date(start)) / 60000)
-export const addMinutes = (iso, min) => new Date(new Date(iso).getTime() + min * 60000).toISOString().slice(0,19)
+
+// All demo timestamps are local wall-clock values without a timezone suffix.
+// Keep the same representation after arithmetic so a local 08:00 does not
+// silently become 00:00 (or a time on the previous day) through toISOString().
+export const formatLocalDateTime = (value) => {
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) return String(value ?? '')
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`
+}
+
+export const addMinutes = (iso, min) => formatLocalDateTime(new Date(new Date(iso).getTime() + min * 60000))
 
 export function taskOf(state, taskId) { return state.tasks.find(t => t.id === Number(taskId)) }
 export function scheduleOf(state, scheduleTaskId) { return state.schedules.find(s => s.id === Number(scheduleTaskId)) }
@@ -34,17 +44,25 @@ export function componentsForSchedule(state, scheduleTaskId) {
   return state.componentAssignments.filter(a => a.scheduleTaskId === Number(scheduleTaskId) && a.status !== 'CANCELLED')
 }
 
-export function employeeLoad(state, employeeId) {
-  const rows = state.employeeAssignments.filter(a => a.employeeId === Number(employeeId) && a.status !== 'CANCELLED')
+export function employeeLoad(state, employeeId, vehicleRepairId = null) {
+  const rows = state.employeeAssignments.filter(a => {
+    if (a.employeeId !== Number(employeeId) || a.status === 'CANCELLED') return false
+    if (vehicleRepairId == null) return true
+    return state.schedules.find(s=>s.id===a.scheduleTaskId)?.vehicleRepairId === Number(vehicleRepairId)
+  })
   return rows.reduce((sum,a) => {
     const s = scheduleOf(state,a.scheduleTaskId)
     return sum + (s ? minutesBetween(s.plannedStartAt,s.plannedEndAt) : 0)
   },0)
 }
 
-export function employeeTasks(state, employeeId) {
+export function employeeTasks(state, employeeId, vehicleRepairId = null) {
   return state.employeeAssignments
-    .filter(a => a.employeeId === Number(employeeId) && a.status !== 'CANCELLED')
+    .filter(a => {
+      if (a.employeeId !== Number(employeeId) || a.status === 'CANCELLED') return false
+      if (vehicleRepairId == null) return true
+      return state.schedules.find(s=>s.id===a.scheduleTaskId)?.vehicleRepairId === Number(vehicleRepairId)
+    })
     .map(a => {
       const schedule = scheduleOf(state,a.scheduleTaskId)
       return { assignment:a, schedule, task: schedule ? taskOf(state,schedule.taskId) : null }

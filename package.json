@@ -6,8 +6,10 @@
   "scripts": {
     "start": "node start.js",
     "serve": "node start.js --no-open",
-    "test:ui": "python3 tests/ui_smoke.py",
+    "test:ui": "node tests/ui_smoke.mjs",
+    "test:ui:python": "python tests/ui_smoke.py",
+    "test:acceptance": "node tests/v01_acceptance.mjs",
     "test:logic": "node tests/schedule_logic.mjs",
-    "test": "node tests/schedule_logic.mjs && python3 tests/ui_smoke.py"
+    "test": "node tests/schedule_logic.mjs && node tests/v01_acceptance.mjs && node tests/ui_smoke.mjs"
   }
 }

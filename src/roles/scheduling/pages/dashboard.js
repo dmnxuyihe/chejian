@@ -5,19 +5,25 @@ import { toast } from '../../../core/ui.js'
 
 export const dashboardPage = {
   render({ state }) {
-    const vehicle = state.vehicleRepairs[0]
+    const vehicle = state.vehicleRepairs.find(v=>v.id===state.selectedVehicleRepairId) || state.vehicleRepairs[0]
+    const vehicleScheduleIds = new Set(state.schedules.filter(s=>s.vehicleRepairId===vehicle.id).map(s=>s.id))
+    const vehicleAssignments = state.employeeAssignments.filter(a=>vehicleScheduleIds.has(a.scheduleTaskId)&&a.status!=='CANCELLED')
+    const vehicleEquipment = state.equipmentAssignments.filter(a=>vehicleScheduleIds.has(a.scheduleTaskId)&&a.status!=='CANCELLED')
+    const vehicleComponents = state.componentAssignments.filter(a=>vehicleScheduleIds.has(a.scheduleTaskId)&&a.status!=='CANCELLED')
     const version = state.scheduleVersions.find(v => v.id === vehicle.currentVersionId)
-    const loads = state.employees.map(e=>({e, min:employeeLoad(state,e.id)})).sort((a,b)=>b.min-a.min)
+    const published = version?.status === 'PUBLISHED'
+    const exceptions = state.exceptions.filter(e=>e.vehicleRepairId===vehicle.id)
+    const loads = state.employees.map(e=>({e, min:employeeLoad(state,e.id,vehicle.id)})).sort((a,b)=>b.min-a.min)
     const avg = loads.length ? Math.round(loads.reduce((s,x)=>s+x.min,0)/loads.length) : 0
-    const assignedComponents = new Set(state.componentAssignments.filter(a=>a.status!=='CANCELLED').map(a=>a.componentInstanceId)).size
+    const assignedComponents = new Set(vehicleComponents.map(a=>a.componentInstanceId)).size
     return `${pageHeader('智能排程驾驶台','第一版核心：在FS、工位、人员、设备和配件约束下排到具体人员，再由工班长做现场微调。',
-      `<button class="btn" data-publish ${state.published?'disabled':''}>${state.published?'已发布':'发布当前排程'}</button><button class="btn btn-primary" data-run-schedule>重新智能排程</button>`)}
+      `<select class="select" data-vehicle-select style="width:190px">${state.vehicleRepairs.map(v=>`<option value="${v.id}" ${v.id===vehicle.id?'selected':''}>${v.locomotiveNo} · ${v.status}</option>`).join('')}</select><button class="btn" data-publish ${published?'disabled':''}>${published?'已发布':'发布当前排程'}</button><button class="btn btn-primary" data-run-schedule>重新智能排程</button>`)}
       <div class="grid grid-5" style="margin-bottom:16px">
         ${statCard('当前车辆',vehicle.locomotiveNo,'HXD1C高级修')}
-        ${statCard('排程版本',`V${version?.versionNo||1}`,state.published?'已发布':'草稿','metric-indigo')}
-        ${statCard('任务数量',state.schedules.length,'构架4 · 轮驱16')}
+        ${statCard('排程版本',`V${version?.versionNo||1}`,published?'已发布':'草稿','metric-indigo')}
+        ${statCard('任务数量',vehicleScheduleIds.size,'构架4 · 轮驱16')}
         ${statCard('平均人员负荷',`${avg} 分钟`,'按当前任务累计','metric-green')}
-        ${statCard('排程异常',state.exceptions.length,'硬约束冲突','metric-red')}
+        ${statCard('排程异常',exceptions.length,'硬约束冲突','metric-red')}
       </div>
       <div class="grid grid-2" style="margin-bottom:16px">
         <section class="card">
@@ -25,8 +31,8 @@ export const dashboardPage = {
           <div class="detail-grid">
             <div><span>计划进场</span><strong>${fmtFullDateTime(vehicle.plannedEntryAt)}</strong></div>
             <div><span>计划交车</span><strong>${fmtFullDateTime(vehicle.plannedExitAt)}</strong></div>
-            <div><span>人员分配</span><strong>${state.employeeAssignments.filter(a=>a.status!=='CANCELLED').length} 条</strong></div>
-            <div><span>设备分配</span><strong>${state.equipmentAssignments.length} 条</strong></div>
+            <div><span>人员分配</span><strong>${vehicleAssignments.length} 条</strong></div>
+            <div><span>设备分配</span><strong>${vehicleEquipment.length} 条</strong></div>
             <div><span>配件绑定</span><strong>${assignedComponents} 件</strong></div>
             <div><span>48小时工艺等待</span><strong>轮对压装 → 反压</strong></div>
           </div>
@@ -45,13 +51,16 @@ export const dashboardPage = {
       </section>`
   },
   mount(ctx) {
+    document.querySelector('[data-vehicle-select]')?.addEventListener('change',e=>{ctx.state.selectedVehicleRepairId=Number(e.target.value);ctx.rerender()})
     document.querySelector('[data-run-schedule]')?.addEventListener('click',()=>{
-      const result = runAutoSchedule(ctx.state)
+      const result = runAutoSchedule(ctx.state, ctx.state.selectedVehicleRepairId)
       toast('智能排程完成',`生成 V${result.versionNo}，硬冲突 ${result.exceptionCount} 项`, result.exceptionCount?'warning':'success')
       ctx.rerender()
     })
     document.querySelector('[data-publish]')?.addEventListener('click',()=>{
-      publishSchedule(ctx.state); toast('排程已发布','工班长和作业人员可查看最终任务'); ctx.rerender()
+      const ok = publishSchedule(ctx.state)
+      toast(ok?'排程已发布':'暂不能发布',ok?'工班长和作业人员可查看最终任务':'请先完成自动排程并处理当前车辆的所有开放异常',ok?'success':'warning')
+      if(ok) ctx.rerender()
     })
   }
 }
