@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { roles } from '../src/roles/index.js'
 
 const port=5187, debugPort=9237
 const base=`http://127.0.0.1:${port}`
@@ -54,13 +55,9 @@ try{
   await cdp('Runtime.enable'); await cdp('Log.enable')
   await delay(600)
   const roleCount=await js(`document.querySelectorAll('[data-role-card]').length`)
-  if(roleCount!==7) throw new Error(`角色入口数量错误: ${roleCount}`)
+  if(roleCount!==18) throw new Error(`角色入口数量错误: ${roleCount}`)
 
-  const routes={
-    'system-admin':['overview','teams','employees','workstations','equipment','tools','materials','spares','components'],
-    planning:['plans'], scheduling:['dashboard','gantt','workforce','resources','exceptions'],
-    foreman:['team-tasks'], worker:['my-tasks'], quality:['inspections'], technical:['processes'],
-  }
+  const routes=Object.fromEntries(Object.entries(roles).map(([id,role])=>[id,role.nav.map(item=>item.id)]))
   let pageChecks=0
   for(const [role,pages] of Object.entries(routes)){
     for(const page of pages){

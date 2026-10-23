@@ -10,6 +10,7 @@
     "test:ui:python": "python tests/ui_smoke.py",
     "test:acceptance": "node tests/v01_acceptance.mjs",
     "test:logic": "node tests/schedule_logic.mjs",
-    "test": "node tests/schedule_logic.mjs && node tests/v01_acceptance.mjs && node tests/ui_smoke.mjs"
+    "test:roles": "node tests/phase_one_roles.mjs",
+    "test": "node tests/phase_one_roles.mjs && node tests/schedule_logic.mjs && node tests/v01_acceptance.mjs && node tests/ui_smoke.mjs"
   }
 }

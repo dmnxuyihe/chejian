@@ -6,10 +6,15 @@ const icons = {
 }
 
 export function renderShell({ role, page, pageHtml, selectedWorkerName='' }) {
-  const nav = role.nav.map(item => `
+  let currentSection = ''
+  const nav = role.nav.map(item => {
+    const section = item.section && item.section !== currentSection ? `<div class="nav-group-title">${escapeHtml(item.section)}</div>` : ''
+    currentSection = item.section || currentSection
+    return `${section}
     <button class="nav-item ${item.id === page ? 'active':''}" data-nav="${item.id}" data-test="nav-${item.id}">
-      <span class="nav-icon">${icons[item.icon] || '•'}</span><span>${escapeHtml(item.label)}</span>
-    </button>`).join('')
+      <span class="nav-icon">${icons[item.icon] || '•'}</span><span>${escapeHtml(item.label)}</span>${item.status === 'planned' ? '<span class="nav-status">待</span>' : ''}
+    </button>`
+  }).join('')
 
   const meta = role.id === 'worker' && selectedWorkerName ? selectedWorkerName : role.label
   return `
@@ -20,10 +25,9 @@ export function renderShell({ role, page, pageHtml, selectedWorkerName='' }) {
         <div><div class="brand-title">高级修智能排程</div><div class="brand-subtitle">SCHEDULING · V1</div></div>
       </div>
       <nav class="nav">
-        <div class="nav-group-title">${escapeHtml(role.group || '功能')}</div>
         ${nav}
         <div class="notice notice-info" style="margin:18px 6px 0">
-          <span>i</span><div>第一版以智能排程为核心，其他功能保持最小可用闭环。</div>
+          <span>i</span><div>第一阶段完成角色与导航接入；标记“待”的业务将在对应角色阶段开发。</div>
         </div>
       </nav>
       <div class="sidebar-footer">
