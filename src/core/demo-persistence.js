@@ -31,6 +31,8 @@ function validateData(data) {
         const ids = data[key].map(row => row.id)
         if (ids.some(id => !positiveId(id)) || new Set(ids).size !== ids.length) throw new Error(`备份中的${key}编号重复或无效`)
       }
+    } else if (['toolRequirements', 'partRequirements', 'materialRequirements', 'approvalRecords', 'componentMovements'].includes(key) && data[key] === undefined) {
+      data[key] = []
     } else if (object(value)) {
       if (!object(data[key])) throw new Error(`备份中的${key}格式无效`)
     } else if (value !== null && typeof data[key] !== typeof value && !(key.startsWith('selected') && data[key] === null)) throw new Error(`备份中的${key}类型无效`)

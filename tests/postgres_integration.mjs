@@ -35,7 +35,7 @@ try {
   let result = await request('/api/state', 'PUT', { revision: initial.revision, snapshot: exportDemoSnapshot(state) })
   assert.equal(result.status, 200)
   const revision = result.value.revision
-  const counts = await db.pool.query(`SELECT (SELECT count(*) FROM "${schema}".vehicle_repairs)::int AS vehicles,(SELECT count(*) FROM "${schema}".schedules)::int AS tasks,(SELECT count(*) FROM "${schema}".resource_assignments)::int AS assignments`)
+  const counts = await db.pool.query(`SELECT (SELECT count(*) FROM "${schema}".vehicle_repair)::int AS vehicles,(SELECT count(*) FROM "${schema}".vehicle_repair_schedule)::int AS tasks,((SELECT count(*) FROM "${schema}".schedule_employee_assignment)+(SELECT count(*) FROM "${schema}".schedule_equipment_assignment)+(SELECT count(*) FROM "${schema}".schedule_component_assignment))::int AS assignments`)
   assert.equal(counts.rows[0].vehicles, 3)
   assert.equal(counts.rows[0].tasks, 60)
   assert.ok(counts.rows[0].assignments > 0)

@@ -28,9 +28,11 @@ try {
   stage = command === 'init' ? '初始化数据库' : '检查数据库'
   const result = command === 'init' ? await database.init({ snapshot }) : null
   const { revision, snapshot: saved } = await database.read()
+  const tables = await database.counts()
   console.log(JSON.stringify({
     storage: 'postgresql', schema: config.schema, revision,
-    ...(result ? { initialized: result.initialized, message: result.initialized ? '已建表并写入初始数据' : '已有数据，已保留；未覆盖或追加初始数据' } : { message: '连接与数据读取正常' }),
+    businessTables: tables.filter(name => name !== 'application_state').length,
+    ...(result ? { initialized: result.initialized, migrated: result.migrated, message: result.migrated ? '旧版6表数据已迁移到30张业务表' : result.initialized ? '已建表并写入初始数据' : '已有数据，已保留；未覆盖或追加初始数据' } : { message: '连接与数据读取正常' }),
     vehicles: saved.data.vehicleRepairs.length,
     tasks: saved.data.schedules.length,
     assignments: saved.data.employeeAssignments.length + saved.data.equipmentAssignments.length + saved.data.componentAssignments.length,

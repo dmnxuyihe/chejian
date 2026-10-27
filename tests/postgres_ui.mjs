@@ -34,10 +34,10 @@ try {
   await a.locator('[data-f="priority"]').fill('0')
   await a.locator('[data-modal-confirm]').evaluate(button => { button.click(); button.click() })
   await a.locator('.modal-backdrop').waitFor({ state: 'detached' })
-  let crudRow = (await db.pool.query(`SELECT id,details FROM "${schema}".vehicle_repairs WHERE locomotive_no='CRUD-DB'`)).rows
+  let crudRow = (await db.pool.query(`SELECT vehicle_repair_id,priority FROM "${schema}".vehicle_repair WHERE locomotive_no='CRUD-DB'`)).rows
   assert.equal(crudRow.length, 1, '连续点击保存只创建一次')
-  assert.equal(crudRow[0].details.priority, 0)
-  const crudId = Number(crudRow[0].id)
+  assert.equal(Number(crudRow[0].priority), 0)
+  const crudId = Number(crudRow[0].vehicle_repair_id)
   await a.locator(`[data-edit-plan="${crudId}"]`).click()
   await a.locator('[data-f="entry"]').fill('2026-11-01T08:00')
   await a.locator('[data-modal-confirm]').click()
@@ -89,7 +89,7 @@ try {
   assert.ok((await a.locator('.pc-import-panel').innerText()).includes('2行可导入'))
   await a.locator('[data-pc-confirm-import]').click()
   await a.getByText('导入完成', { exact: true }).waitFor()
-  assert.equal((await db.pool.query(`SELECT count(*)::int AS n FROM "${schema}".vehicle_repairs`)).rows[0].n, 3)
+  assert.equal((await db.pool.query(`SELECT count(*)::int AS n FROM "${schema}".vehicle_repair`)).rows[0].n, 3)
   await a.reload()
   await a.locator('[data-test="pc1-planning"]').waitFor()
   assert.equal(await a.locator('.pc-entry.pc-event').count(), 3)

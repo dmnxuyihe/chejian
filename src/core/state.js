@@ -30,6 +30,9 @@ export function createState() {
     tasks: clone(tasks),
     dependencies: clone(dependencies),
     teamRequirements: clone(teamRequirements),
+    toolRequirements: [],
+    partRequirements: [],
+    materialRequirements: [],
     equipmentRequirements: clone(equipmentRequirements),
     componentRequirements: clone(componentRequirements),
     taskStepHints: clone(taskStepHints),
@@ -40,6 +43,8 @@ export function createState() {
     equipmentAssignments: clone(initialEquipmentAssignments),
     componentAssignments: clone(initialComponentAssignments),
     exceptions: clone(initialExceptions),
+    approvalRecords: [],
+    componentMovements: [],
     qualityRecords: [],
     activityLog: [
       { id: 1, time: '2026-09-23 19:30', type: '系统', text: '初始化构架与轮驱排程数据' },

@@ -1,6 +1,6 @@
 # PostgreSQL 接入与演示部署
 
-2026年10月27日，PC1计划日历页面已接入真实PostgreSQL。浏览器通过Node后端读写，数据库为业务数据来源；localStorage仅保留旧版数据供手动迁移，不再承担默认业务保存。
+PC1应用完整连接《数据库.xlsx》中定义的30张业务表，共261个字段。浏览器通过Node后端读写PostgreSQL，业务实体逐表持久化；额外的`application_state`只保存演示视图、兼容字段和共享版本号，不取代业务关系表。
 
 ## 当前本机配置
 
@@ -8,22 +8,25 @@
 - 当前数据库：`workshop_schedule`；本项目使用独立schema `pc1`。
 - 连接信息在项目根目录`.env`中，该文件已被Git忽略，HTTP服务禁止读取。
 - 本机演示地址：`http://127.0.0.1:5193/#/planning/plans`，使用时需保持Node服务运行。
-- 初次建表仅在新数据区初始化一车和20条工序；以后重启不会重新覆盖数据库数据。两车计划通过页面模板导入，模拟排程与清单仍按各成员分工接入。
+- 首次部署在空schema中初始化基础演示资源、一辆机车及20条工序。初始化命令遇到原六表schema时，会在一个事务内搬入30表并核对约束；迁移失败会回滚，成功后清理旧六表。以后重复执行不会重置已有业务数据。
 
-原数据库中其他schema和旧项目业务表保持原样。没有导入整个历史Excel数据库，本次保存的是当前PC1演示使用的计划、排程、资源基础数据与模拟草稿。
+其他schema保持原样。空数据库初始化写入演示样例，不会把Excel字典误当作生产记录导入。
 
 ## 数据表
 
-| 表 | 用途 |
+| 数据域 | 业务表 |
 | --- | --- |
-| `pc1.vehicle_repairs` | 车辆编号、入段、要求完成时间、状态及计划附加字段 |
-| `pc1.schedule_versions` | 车辆排程版本与发布状态 |
-| `pc1.schedules` | 工序、车辆、版本、工位、起止时间、锁定及进度 |
-| `pc1.resource_assignments` | 人员、设备和配件实例与任务的对应关系 |
-| `pc1.reference_data` | 人员班组、工艺依赖、工具物料等现有基础集合；模拟草稿单独保存为JSONB |
-| `pc1.metadata` | 共享数据版本、更新时间与结构版本 |
+| 班组、人员、休假 | `team`、`employee`、`employee_leave` |
+| 工具、备件、物料 | `tool`、`spare_part`、`material` |
+| 工位、机型、修程、设备、工作日历 | `workstation`、`locomotive_model`、`repair_program`、`equipment`、`work_calendar` |
+| 检修任务与资源需求 | `maintenance_task`、`task_dependency`、`task_team_requirement`、`task_tool_requirement`、`task_part_requirement`、`task_material_requirement`、`task_equipment_requirement`、`task_component_requirement` |
+| 车辆、排程、人员/设备分配、版本、异常、审批 | `vehicle_repair`、`schedule_version`、`vehicle_repair_schedule`、`schedule_employee_assignment`、`schedule_equipment_assignment`、`schedule_exception`、`approval_record` |
+| 配件与流转 | `component_type`、`component_instance`、`schedule_component_assignment`、`component_movement_record` |
+| 应用同步辅助数据 | `application_state`（版本号、视图设置及字典未定义的页面扩展字段） |
 
-车辆与任务采用关系表，可直接按车辆、日期查询。补充字段及现有基础集合用JSONB保留当前字段结构。时间使用无时区timestamp，保持工艺中本地08:00等时间的原意；保存时间使用带时区时间戳。
+业务表、字段、主键、唯一索引、数据类型及已列外键均由`server/tables.json`记录的Excel字典生成；`npm run db:schema`可重新生成`server/schema.sql`。包括重复版本号、任务资源需求、设备和配件分配、审批及流转历史的表都已加入数据库读写映射。数据库另外有一张`application_state`做应用版本同步和保留页面兼容字段，因此实际共31张表，其中业务表严格30张。
+
+SQL列保存字典规定的业务字段。应用兼容属性放在`application_state.payload`中，带稳定业务主键，与30张业务表在同一个事务中读写；它不复制业务表记录。时间列使用无时区时间戳，保留工艺本地时间；同步更新时间使用带时区时间戳。
 
 ## 在新电脑部署
 
@@ -70,7 +73,7 @@ npm start
 
 打开`http://127.0.0.1:5193/#/planning/plans`。无需自动打开浏览器时使用`npm run serve`。
 
-`scripts/database.mjs`执行初始化，`server/schema.sql`提供表结构。初始化事务内完成建表和写入默认资源、计划与工序；失败会回滚。首次返回`initialized: true`，重复执行返回`initialized: false`并保留已有记录和版本，不追加重复数据。`db:check`只检查连接和读取记录数量，不建表、不改数据。
+`scripts/database.mjs`执行初始化，`server/tables.json`列出字典字段，`server/schema.sql`提供PostgreSQL表结构。初始化事务内完成建表、关系迁移和演示数据写入；失败会回滚。首次返回`initialized: true`，重复执行返回`initialized: false`并保留已有记录和版本。`db:check`只检查连接和读取30张业务表的数据量，不建表、不改数据。
 
 启动时仍会自动检查并初始化空数据区；正式部署先单独执行`db:init`，便于在启动网页前确认配置有效。连接失败直接报错退出，不会静默退回本地存储。`--local-demo`只用于明确选择的离线演示及回归测试。
 
@@ -98,7 +101,7 @@ npm run db:check
 npm start
 ```
 
-当前版本重复初始化不会覆盖数据；未来涉及表结构变更时需要随版本提供迁移脚本，不能通过修改初始数据来更新已有记录。仓库提交`package-lock.json`固定依赖版本，不提交`.env`、备份和`node_modules`。
+当前版本重复初始化不会覆盖数据。业务库升级由schema结构版本控制；新增字段和约束需更新Excel字典、schema生成文件及迁移逻辑。仓库提交`package-lock.json`固定依赖版本，不提交`.env`、备份和`node_modules`。
 
 ## 页面保存与迁移
 

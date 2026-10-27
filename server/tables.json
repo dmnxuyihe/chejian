@@ -1,0 +1,3017 @@
+[
+  {
+    "table": "team",
+    "label": "班组基本信息表",
+    "domain": "基础资源",
+    "purpose": "维护检修班组基础信息，供人员归属、任务班组需求和排程使用。",
+    "columns": [
+      {
+        "name": "team_id",
+        "label": "班组ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "主键"
+      },
+      {
+        "name": "team_name",
+        "label": "班组名称",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "班组显示名称"
+      },
+      {
+        "name": "status",
+        "label": "状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "ENABLED",
+        "reference": "31",
+        "description": "ENABLED/DISABLED"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "updated_at",
+        "label": "更新时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "更新时刷新"
+      }
+    ],
+    "indexes": [
+      "UK(team_name)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "employee",
+    "label": "人员基本信息表",
+    "domain": "基础资源",
+    "purpose": "维护参与检修作业的人员信息及所属班组。",
+    "columns": [
+      {
+        "name": "employee_id",
+        "label": "人员ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "主键"
+      },
+      {
+        "name": "employee_no",
+        "label": "工号",
+        "type": "VARCHAR(32)",
+        "nullable": true,
+        "key": "UK",
+        "default": "31",
+        "reference": "31",
+        "description": "建议保留，便于人员系统对接"
+      },
+      {
+        "name": "employee_name",
+        "label": "人员姓名",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "team_id",
+        "label": "所属班组ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "team.team_id",
+        "description": "所属班组"
+      },
+      {
+        "name": "status",
+        "label": "人员状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "ACTIVE",
+        "reference": "31",
+        "description": "ACTIVE/INACTIVE"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "updated_at",
+        "label": "更新时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "UK(employee_no)",
+      "IDX(team_id,status)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "employee_leave",
+    "label": "人员休假信息表",
+    "domain": "基础资源",
+    "purpose": "记录人员请假、培训、借调等不可参与排程的时间段。",
+    "columns": [
+      {
+        "name": "leave_id",
+        "label": "休假记录ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "独立主键，同一人员可有多条记录"
+      },
+      {
+        "name": "employee_id",
+        "label": "人员ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "employee.employee_id",
+        "description": "31"
+      },
+      {
+        "name": "leave_type",
+        "label": "不可用类型",
+        "type": "VARCHAR(32)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "请假/培训/借调等"
+      },
+      {
+        "name": "start_at",
+        "label": "开始时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "end_at",
+        "label": "结束时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "必须晚于开始时间"
+      },
+      {
+        "name": "status",
+        "label": "状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "VALID",
+        "reference": "31",
+        "description": "VALID/CANCELLED"
+      },
+      {
+        "name": "remark",
+        "label": "备注",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "IDX(employee_id,start_at,end_at)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "tool",
+    "label": "工具信息表",
+    "domain": "基础资源",
+    "purpose": "维护排程需要考虑的工具品种、数量、状态和位置；第一版按数量管理。",
+    "columns": [
+      {
+        "name": "tool_id",
+        "label": "工具ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "tool_code",
+        "label": "工具编码",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "key": "UK",
+        "default": "31",
+        "reference": "31",
+        "description": "外部系统有编码时使用"
+      },
+      {
+        "name": "tool_name",
+        "label": "工具名称",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "quantity",
+        "label": "可用数量",
+        "type": "INT",
+        "nullable": false,
+        "key": "31",
+        "default": "0",
+        "reference": "31",
+        "description": "第一版按数量管理"
+      },
+      {
+        "name": "manufacturer",
+        "label": "厂家",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "inspection_cycle_months",
+        "label": "检修/检定周期（月）",
+        "type": "INT",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "last_inspection_at",
+        "label": "上次检修/检定时间",
+        "type": "DATETIME",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "status",
+        "label": "状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "AVAILABLE",
+        "reference": "31",
+        "description": "AVAILABLE/MAINTENANCE/DISABLED"
+      },
+      {
+        "name": "location",
+        "label": "位置",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "updated_at",
+        "label": "更新时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "UK(tool_code)",
+      "IDX(status)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "spare_part",
+    "label": "备件信息表",
+    "domain": "基础资源",
+    "purpose": "维护备件品种及数量。第一版不做序列号级一物一码。",
+    "columns": [
+      {
+        "name": "part_id",
+        "label": "备件ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "part_code",
+        "label": "备件编号",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "key": "UK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "part_name",
+        "label": "备件名称",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "specification",
+        "label": "规格型号",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "quantity",
+        "label": "可用数量",
+        "type": "DECIMAL(12,3)",
+        "nullable": false,
+        "key": "31",
+        "default": "0",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "unit",
+        "label": "计量单位",
+        "type": "VARCHAR(16)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "件/套等"
+      },
+      {
+        "name": "manufacturer",
+        "label": "厂家",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "manufacture_date",
+        "label": "出厂日期",
+        "type": "DATE",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "status",
+        "label": "状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "AVAILABLE",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "location",
+        "label": "位置",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "updated_at",
+        "label": "更新时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "wastage_tate",
+        "label": "损耗度",
+        "type": "DECIMAL(3,2)",
+        "nullable": true,
+        "key": "None",
+        "default": 0,
+        "reference": null,
+        "description": null
+      }
+    ],
+    "indexes": [
+      "UK(part_code)",
+      "IDX(status)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "material",
+    "label": "物料信息表",
+    "domain": "基础资源",
+    "purpose": "维护润滑油、清洗剂、胶等耗材/辅料及可用数量，与备件分开。",
+    "columns": [
+      {
+        "name": "material_id",
+        "label": "物料ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "material_code",
+        "label": "物料编码",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "key": "UK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "material_name",
+        "label": "物料名称",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "specification",
+        "label": "规格型号",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "unit",
+        "label": "计量单位",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "kg/L/瓶/盒等"
+      },
+      {
+        "name": "quantity",
+        "label": "可用数量",
+        "type": "DECIMAL(12,3)",
+        "nullable": false,
+        "key": "31",
+        "default": "0",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "manufacturer",
+        "label": "厂家",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "status",
+        "label": "状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "AVAILABLE",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "location",
+        "label": "位置",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "updated_at",
+        "label": "更新时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "UK(material_code)",
+      "IDX(status)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "workstation",
+    "label": "工位信息表",
+    "domain": "基础资源",
+    "purpose": "维护车间工位、产线和并发容量等排程资源。",
+    "columns": [
+      {
+        "name": "workstation_id",
+        "label": "工位ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "workstation_code",
+        "label": "工位编码",
+        "type": "VARCHAR(32)",
+        "nullable": true,
+        "key": "UK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "workstation_name",
+        "label": "工位名称",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "production_line",
+        "label": "所属产线",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "capacity",
+        "label": "并发容量",
+        "type": "INT",
+        "nullable": false,
+        "key": "31",
+        "default": "1",
+        "reference": "31",
+        "description": "同一时段允许并行的任务/车辆数"
+      },
+      {
+        "name": "status",
+        "label": "状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "AVAILABLE",
+        "reference": "31",
+        "description": "AVAILABLE/MAINTENANCE/DISABLED"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "updated_at",
+        "label": "更新时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "UK(workstation_code)",
+      "IDX(production_line,status)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "locomotive_model",
+    "label": "机车类型表",
+    "domain": "基础字典",
+    "purpose": "维护机车型号字典。",
+    "columns": [
+      {
+        "name": "model_id",
+        "label": "型号ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "model_code",
+        "label": "型号编码",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "key": "UK",
+        "default": "31",
+        "reference": "31",
+        "description": "如HXD1C"
+      },
+      {
+        "name": "model_name",
+        "label": "型号名",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "status",
+        "label": "状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "ENABLED",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "updated_at",
+        "label": "更新时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "UK(model_code)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "repair_program",
+    "label": "修程表",
+    "domain": "基础字典",
+    "purpose": "定义某机车型号下的修程基础信息。",
+    "columns": [
+      {
+        "name": "repair_program_id",
+        "label": "修程ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "model_id",
+        "label": "型号ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "locomotive_model.model_id",
+        "description": "31"
+      },
+      {
+        "name": "repair_program_code",
+        "label": "修程编码",
+        "type": "VARCHAR(32)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "repair_program_name",
+        "label": "修程名称",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "如高级修/C4/C5"
+      },
+      {
+        "name": "status",
+        "label": "状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "ENABLED",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "updated_at",
+        "label": "更新时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "UK(model_id,repair_program_name)",
+      "第一版不保存 standard_days；修程表只维护机型与修程基础对应关系。"
+    ]
+  },
+  {
+    "table": "maintenance_task",
+    "label": "检修任务信息表",
+    "domain": "工艺配置",
+    "purpose": "定义修程下的标准检修任务/工序模板；任务先后顺序由任务依赖关系表表达。",
+    "columns": [
+      {
+        "name": "task_id",
+        "label": "任务ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "标准任务模板ID"
+      },
+      {
+        "name": "repair_program_id",
+        "label": "修程ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "repair_program.repair_program_id",
+        "description": "31"
+      },
+      {
+        "name": "task_name",
+        "label": "任务名称",
+        "type": "VARCHAR(255)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "workstation_id",
+        "label": "默认工位ID",
+        "type": "BIGINT",
+        "nullable": true,
+        "key": "FK",
+        "default": "31",
+        "reference": "workstation.workstation_id",
+        "description": "为空时可由算法/人工选择"
+      },
+      {
+        "name": "standard_duration_min",
+        "label": "标准工时（分钟）",
+        "type": "INT",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "排程核心字段"
+      },
+      {
+        "name": "sequence_no",
+        "label": "排序号",
+        "type": "INT",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "同一天内展示/处理顺序"
+      },
+      {
+        "name": "is_progress_node",
+        "label": "是否进度监控节点",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "key": "31",
+        "default": "FALSE",
+        "reference": "31",
+        "description": "对应需求中的“进度监控节点”；当前未配置时默认FALSE"
+      },
+      {
+        "name": "status",
+        "label": "状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "ENABLED",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "updated_at",
+        "label": "更新时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "IDX(repair_program_id,sequence_no,status)",
+      "不保存 day_no；任务日期由排程结果和工作日历计算。",
+      "不保存 steps / task_description；流程文件中的步骤和详细描述仅作为业务说明，不进入第一版数据库。",
+      "is_key_task 改为 is_progress_node，对应需求中的“进度监控节点”。",
+      "workstation_id 只关联真实物理工位；流程Excel中标题为“工位”的任务名称不能直接生成工位主数据。"
+    ]
+  },
+  {
+    "table": "task_dependency",
+    "label": "检修任务依赖关系表",
+    "domain": "工艺配置",
+    "purpose": "定义检修任务之间的前后置约束。",
+    "columns": [
+      {
+        "name": "dependency_id",
+        "label": "关系ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "parent_task_id",
+        "label": "父/前置任务ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "maintenance_task.task_id",
+        "description": "31"
+      },
+      {
+        "name": "child_task_id",
+        "label": "子/后置任务ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "maintenance_task.task_id",
+        "description": "31"
+      },
+      {
+        "name": "dependency_type",
+        "label": "依赖类型",
+        "type": "VARCHAR(8)",
+        "nullable": false,
+        "key": "31",
+        "default": "FS",
+        "reference": "31",
+        "description": "FS/SS/FF/SF，默认FS"
+      },
+      {
+        "name": "lag_minutes",
+        "label": "滞后时间（分钟）",
+        "type": "INT",
+        "nullable": false,
+        "key": "31",
+        "default": "0",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "UK(parent_task_id,child_task_id,dependency_type)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "task_team_requirement",
+    "label": "检修任务-班组关系表",
+    "domain": "工艺配置",
+    "purpose": "定义标准任务需要哪个班组、多少人及可选的班组作业时长。",
+    "columns": [
+      {
+        "name": "operation_id",
+        "label": "作业ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "保留原设计中的作业ID"
+      },
+      {
+        "name": "task_id",
+        "label": "任务ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "maintenance_task.task_id",
+        "description": "31"
+      },
+      {
+        "name": "team_id",
+        "label": "班组ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "team.team_id",
+        "description": "31"
+      },
+      {
+        "name": "headcount",
+        "label": "需求人数",
+        "type": "INT",
+        "nullable": false,
+        "key": "31",
+        "default": "1",
+        "reference": "31",
+        "description": "必须>0"
+      },
+      {
+        "name": "work_duration_min",
+        "label": "工作时间（分钟）",
+        "type": "INT",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "为空时采用任务标准工时"
+      },
+      {
+        "name": "remark",
+        "label": "备注",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "UK(task_id,team_id)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "task_tool_requirement",
+    "label": "检修任务-工具关系表",
+    "domain": "工艺配置",
+    "purpose": "定义任务执行所需工具及数量。",
+    "columns": [
+      {
+        "name": "task_id",
+        "label": "任务ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK/FK",
+        "default": "31",
+        "reference": "maintenance_task.task_id",
+        "description": "联合主键"
+      },
+      {
+        "name": "tool_id",
+        "label": "工具ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK/FK",
+        "default": "31",
+        "reference": "tool.tool_id",
+        "description": "联合主键"
+      },
+      {
+        "name": "quantity",
+        "label": "需求数量",
+        "type": "INT",
+        "nullable": false,
+        "key": "31",
+        "default": "1",
+        "reference": "31",
+        "description": "必须>0"
+      }
+    ],
+    "indexes": [
+      "PK(task_id,tool_id)",
+      "IDX(tool_id)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "task_part_requirement",
+    "label": "检修任务-备件关系表",
+    "domain": "工艺配置",
+    "purpose": "定义任务执行所需备件及数量。",
+    "columns": [
+      {
+        "name": "task_id",
+        "label": "任务ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK/FK",
+        "default": "31",
+        "reference": "maintenance_task.task_id",
+        "description": "联合主键"
+      },
+      {
+        "name": "part_id",
+        "label": "备件ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK/FK",
+        "default": "31",
+        "reference": "spare_part.part_id",
+        "description": "联合主键"
+      },
+      {
+        "name": "quantity",
+        "label": "需求数量",
+        "type": "DECIMAL(12,3)",
+        "nullable": false,
+        "key": "31",
+        "default": "1",
+        "reference": "31",
+        "description": "必须>0"
+      },
+      {
+        "name": "is_mandatory",
+        "label": "是否必需",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "key": "31",
+        "default": "TRUE",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "PK(task_id,part_id)",
+      "IDX(part_id)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "task_material_requirement",
+    "label": "检修任务-物料关系表",
+    "domain": "工艺配置",
+    "purpose": "定义任务执行所需耗材/物料及数量。",
+    "columns": [
+      {
+        "name": "task_id",
+        "label": "任务ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK/FK",
+        "default": "31",
+        "reference": "maintenance_task.task_id",
+        "description": "联合主键"
+      },
+      {
+        "name": "material_id",
+        "label": "物料ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK/FK",
+        "default": "31",
+        "reference": "material.material_id",
+        "description": "联合主键"
+      },
+      {
+        "name": "quantity",
+        "label": "需求数量",
+        "type": "DECIMAL(12,3)",
+        "nullable": false,
+        "key": "31",
+        "default": "1",
+        "reference": "31",
+        "description": "必须>0"
+      }
+    ],
+    "indexes": [
+      "PK(task_id,material_id)",
+      "IDX(material_id)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "equipment",
+    "label": "设备信息表",
+    "domain": "基础资源",
+    "purpose": "维护天车、试验台等具体设备资源。",
+    "columns": [
+      {
+        "name": "equipment_id",
+        "label": "设备ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "具体设备，如1号天车"
+      },
+      {
+        "name": "equipment_code",
+        "label": "设备编码",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "key": "UK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "equipment_name",
+        "label": "设备名称",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "equipment_type",
+        "label": "设备类型",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "如天车/试验台"
+      },
+      {
+        "name": "workstation_id",
+        "label": "所属工位ID",
+        "type": "BIGINT",
+        "nullable": true,
+        "key": "FK",
+        "default": "31",
+        "reference": "workstation.workstation_id",
+        "description": "31"
+      },
+      {
+        "name": "status",
+        "label": "状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "AVAILABLE",
+        "reference": "31",
+        "description": "AVAILABLE/MAINTENANCE/FAULT/DISABLED"
+      },
+      {
+        "name": "location",
+        "label": "位置",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "updated_at",
+        "label": "更新时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "UK(equipment_code)",
+      "IDX(equipment_type,status)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "task_equipment_requirement",
+    "label": "检修任务-设备关系表",
+    "domain": "工艺配置",
+    "purpose": "定义任务对某类设备的数量需求；第一版按设备类型+数量配置。",
+    "columns": [
+      {
+        "name": "requirement_id",
+        "label": "需求ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "task_id",
+        "label": "任务ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "maintenance_task.task_id",
+        "description": "31"
+      },
+      {
+        "name": "equipment_type",
+        "label": "设备类型",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "例如天车"
+      },
+      {
+        "name": "quantity",
+        "label": "需求数量",
+        "type": "INT",
+        "nullable": false,
+        "key": "31",
+        "default": "1",
+        "reference": "31",
+        "description": "当前按数量设计"
+      },
+      {
+        "name": "use_duration_min",
+        "label": "使用时长（分钟）",
+        "type": "INT",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "为空时按任务标准工时占用"
+      },
+      {
+        "name": "remark",
+        "label": "备注",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "UK(task_id,equipment_type)",
+      "模板阶段只要求“天车×1”这类数量；具体分配哪台设备由排程设备分配表记录。"
+    ]
+  },
+  {
+    "table": "work_calendar",
+    "label": "工作日历表",
+    "domain": "排程配置",
+    "purpose": "配置工作日、节假日和班次时间，用于将“第几天”转换成实际日期。",
+    "columns": [
+      {
+        "name": "calendar_date",
+        "label": "日期",
+        "type": "DATE",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "is_workday",
+        "label": "是否工作日",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "key": "31",
+        "default": "TRUE",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "work_start_time",
+        "label": "工作开始时间",
+        "type": "TIME",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "work_end_time",
+        "label": "工作结束时间",
+        "type": "TIME",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "calendar_type",
+        "label": "日期类型",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "WORKDAY",
+        "reference": "31",
+        "description": "WORKDAY/WEEKEND/HOLIDAY/MAKEUP"
+      },
+      {
+        "name": "remark",
+        "label": "备注",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "主键索引即可，其他索引根据实际查询量补充",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "vehicle_repair",
+    "label": "车辆维修表",
+    "domain": "核心业务",
+    "purpose": "一条记录表示一台机车的一次检修；年度/月度计划导入后直接落本表。",
+    "columns": [
+      {
+        "name": "vehicle_repair_id",
+        "label": "车辆维修ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "一次检修实例ID，不是永久机车ID"
+      },
+      {
+        "name": "locomotive_no",
+        "label": "机车编号",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "如HXD1C0001"
+      },
+      {
+        "name": "repair_program_id",
+        "label": "修程ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "repair_program.repair_program_id",
+        "description": "机型可由修程反查"
+      },
+      {
+        "name": "planned_entry_at",
+        "label": "计划入场时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "年度/月度计划导入字段"
+      },
+      {
+        "name": "planned_exit_at",
+        "label": "计划交车时间",
+        "type": "DATETIME",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "计划交车时间，可由导入数据或后续排程结果确定"
+      },
+      {
+        "name": "actual_entry_at",
+        "label": "实际入场时间",
+        "type": "DATETIME",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "actual_exit_at",
+        "label": "实际交车时间",
+        "type": "DATETIME",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "status",
+        "label": "检修状态",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "key": "31",
+        "default": "UNSCHEDULED",
+        "reference": "31",
+        "description": "UNSCHEDULED/SCHEDULED/IN_PROGRESS/COMPLETED/CANCELLED"
+      },
+      {
+        "name": "approval_status",
+        "label": "审批状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "DRAFT",
+        "reference": "31",
+        "description": "DRAFT/PENDING/APPROVED/REJECTED"
+      },
+      {
+        "name": "current_version_id",
+        "label": "当前版本ID",
+        "type": "BIGINT",
+        "nullable": true,
+        "key": "FK",
+        "default": "31",
+        "reference": "schedule_version.version_id",
+        "description": "创建首版前可为空"
+      },
+      {
+        "name": "owner_bureau",
+        "label": "配属局",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "owner_depot",
+        "label": "配属段",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "repair_sequence",
+        "label": "修次",
+        "type": "INT",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "mileage_km",
+        "label": "累计走行公里",
+        "type": "DECIMAL(12,1)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "plan_source",
+        "label": "计划来源",
+        "type": "VARCHAR(16)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "ANNUAL/MONTHLY/TEMP/MANUAL"
+      },
+      {
+        "name": "priority",
+        "label": "排程优先级",
+        "type": "INT",
+        "nullable": false,
+        "key": "31",
+        "default": "100",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "remark",
+        "label": "备注",
+        "type": "VARCHAR(500)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "updated_at",
+        "label": "更新时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "IDX(planned_entry_at,status)",
+      "IDX(locomotive_no)",
+      "IDX(repair_program_id)",
+      "IDX(approval_status)",
+      "不单独建立年度计划表/月度计划表。"
+    ]
+  },
+  {
+    "table": "schedule_version",
+    "label": "版本表",
+    "domain": "排程核心",
+    "purpose": "保存同一次车辆检修的多个排程版本，支持自动排程、人工调整和发布。",
+    "columns": [
+      {
+        "name": "version_id",
+        "label": "版本ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "vehicle_repair_id",
+        "label": "车辆维修ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "vehicle_repair.vehicle_repair_id",
+        "description": "31"
+      },
+      {
+        "name": "version_no",
+        "label": "版本号",
+        "type": "INT",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "1/2/3..."
+      },
+      {
+        "name": "parent_version_id",
+        "label": "父版本ID",
+        "type": "BIGINT",
+        "nullable": true,
+        "key": "FK",
+        "default": "31",
+        "reference": "schedule_version.version_id",
+        "description": "首版为空"
+      },
+      {
+        "name": "adjust_reason",
+        "label": "调整原因",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "remark",
+        "label": "备注",
+        "type": "VARCHAR(500)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "status",
+        "label": "版本状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "DRAFT",
+        "reference": "31",
+        "description": "DRAFT/CURRENT/ARCHIVED"
+      },
+      {
+        "name": "published_at",
+        "label": "发布时间",
+        "type": "DATETIME",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "发布后写入"
+      },
+      {
+        "name": "published_by",
+        "label": "发布人ID",
+        "type": "BIGINT",
+        "nullable": true,
+        "key": "FK",
+        "default": "31",
+        "reference": "employee.employee_id",
+        "description": "31"
+      },
+      {
+        "name": "created_by",
+        "label": "创建人ID",
+        "type": "BIGINT",
+        "nullable": true,
+        "key": "FK",
+        "default": "31",
+        "reference": "employee.employee_id",
+        "description": "31"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "UK(vehicle_repair_id,version_no)",
+      "IDX(vehicle_repair_id,status)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "vehicle_repair_schedule",
+    "label": "车辆维修排程表",
+    "domain": "排程核心",
+    "purpose": "保存某个版本中每个标准检修任务的具体计划时间、工位和执行状态。",
+    "columns": [
+      {
+        "name": "schedule_task_id",
+        "label": "排程任务ID（T-id）",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "vehicle_repair_id",
+        "label": "车辆维修ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "vehicle_repair.vehicle_repair_id",
+        "description": "31"
+      },
+      {
+        "name": "task_id",
+        "label": "检修任务ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "maintenance_task.task_id",
+        "description": "标准任务模板"
+      },
+      {
+        "name": "version_id",
+        "label": "版本ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "schedule_version.version_id",
+        "description": "31"
+      },
+      {
+        "name": "workstation_id",
+        "label": "排程工位ID",
+        "type": "BIGINT",
+        "nullable": true,
+        "key": "FK",
+        "default": "31",
+        "reference": "workstation.workstation_id",
+        "description": "可与模板默认工位不同"
+      },
+      {
+        "name": "planned_start_at",
+        "label": "计划开始时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "planned_end_at",
+        "label": "计划结束时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "actual_start_at",
+        "label": "实际开始时间",
+        "type": "DATETIME",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "第一版可先保留"
+      },
+      {
+        "name": "actual_end_at",
+        "label": "实际结束时间",
+        "type": "DATETIME",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "第一版可先保留"
+      },
+      {
+        "name": "status",
+        "label": "任务状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "NOT_STARTED",
+        "reference": "31",
+        "description": "NOT_STARTED/IN_PROGRESS/COMPLETED/CANCELLED"
+      },
+      {
+        "name": "is_locked",
+        "label": "是否锁定",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "key": "31",
+        "default": "FALSE",
+        "reference": "31",
+        "description": "锁定与完成状态分开"
+      },
+      {
+        "name": "delay_minutes",
+        "label": "延期分钟数",
+        "type": "INT",
+        "nullable": false,
+        "key": "31",
+        "default": "0",
+        "reference": "31",
+        "description": "可由实际/计划时间计算"
+      },
+      {
+        "name": "remark",
+        "label": "备注",
+        "type": "VARCHAR(500)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "updated_at",
+        "label": "更新时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "UK(version_id,task_id)",
+      "IDX(workstation_id,planned_start_at,planned_end_at)",
+      "IDX(vehicle_repair_id,version_id)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "schedule_employee_assignment",
+    "label": "排程人员分配表",
+    "domain": "排程核心",
+    "purpose": "将具体排程任务分配到具体人员，用于冲突判断和派工查询。",
+    "columns": [
+      {
+        "name": "assignment_id",
+        "label": "人员分配ID（pc_id）",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "schedule_task_id",
+        "label": "排程任务ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "vehicle_repair_schedule.schedule_task_id",
+        "description": "31"
+      },
+      {
+        "name": "employee_id",
+        "label": "人员ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "employee.employee_id",
+        "description": "31"
+      },
+      {
+        "name": "assignment_source",
+        "label": "分配方式",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "AUTO",
+        "reference": "31",
+        "description": "AUTO/MANUAL"
+      },
+      {
+        "name": "status",
+        "label": "分配状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "ASSIGNED",
+        "reference": "31",
+        "description": "ASSIGNED/WORKING/DONE/CANCELLED"
+      },
+      {
+        "name": "assigned_at",
+        "label": "分配时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "remark",
+        "label": "备注",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "UK(schedule_task_id,employee_id)",
+      "IDX(employee_id)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "schedule_equipment_assignment",
+    "label": "排程设备分配表",
+    "domain": "排程核心",
+    "purpose": "排程阶段记录具体排程任务最终分配的具体设备，例如2号天车。",
+    "columns": [
+      {
+        "name": "allocation_id",
+        "label": "设备分配ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "schedule_task_id",
+        "label": "排程任务ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "vehicle_repair_schedule.schedule_task_id",
+        "description": "31"
+      },
+      {
+        "name": "equipment_id",
+        "label": "具体设备ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "equipment.equipment_id",
+        "description": "如实际分配2号天车"
+      },
+      {
+        "name": "start_at",
+        "label": "占用开始时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "end_at",
+        "label": "占用结束时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "status",
+        "label": "状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "ASSIGNED",
+        "reference": "31",
+        "description": "ASSIGNED/USING/DONE/CANCELLED"
+      },
+      {
+        "name": "remark",
+        "label": "备注",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "UK(schedule_task_id,equipment_id)",
+      "IDX(equipment_id,start_at,end_at)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "schedule_exception",
+    "label": "排程异常表",
+    "domain": "排程核心",
+    "purpose": "记录工位冲突、人员不足、设备冲突、工具/备件/物料不足等排程异常。",
+    "columns": [
+      {
+        "name": "exception_id",
+        "label": "异常ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "vehicle_repair_id",
+        "label": "车辆维修ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "vehicle_repair.vehicle_repair_id",
+        "description": "31"
+      },
+      {
+        "name": "version_id",
+        "label": "版本ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": "31",
+        "reference": "schedule_version.version_id",
+        "description": "31"
+      },
+      {
+        "name": "schedule_task_id",
+        "label": "排程任务ID",
+        "type": "BIGINT",
+        "nullable": true,
+        "key": "FK",
+        "default": "31",
+        "reference": "vehicle_repair_schedule.schedule_task_id",
+        "description": "车辆级异常可为空"
+      },
+      {
+        "name": "exception_type",
+        "label": "异常类型",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "WORKSTATION_CONFLICT/EMPLOYEE_SHORTAGE/EQUIPMENT_CONFLICT/TOOL_SHORTAGE/PART_SHORTAGE/MATERIAL_SHORTAGE/DEPENDENCY_CONFLICT"
+      },
+      {
+        "name": "severity",
+        "label": "严重级别",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "WARNING",
+        "reference": "31",
+        "description": "INFO/WARNING/ERROR"
+      },
+      {
+        "name": "message",
+        "label": "异常说明",
+        "type": "VARCHAR(500)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "status",
+        "label": "处理状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "OPEN",
+        "reference": "31",
+        "description": "OPEN/RESOLVED/IGNORED"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "resolved_at",
+        "label": "处理时间",
+        "type": "DATETIME",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "IDX(version_id,status)",
+      "IDX(schedule_task_id)",
+      "第一版冻结结构；后续扩展须另行确认，不在当前版本临时增加字段。"
+    ]
+  },
+  {
+    "table": "approval_record",
+    "label": "审批记录表",
+    "domain": "通用流程",
+    "purpose": "记录审核/审批流程的每一级处理人、结果、意见和时间。",
+    "columns": [
+      {
+        "name": "approval_id",
+        "label": "审批记录ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "business_type",
+        "label": "业务类型",
+        "type": "VARCHAR(32)",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "如VEHICLE_REPAIR_PLAN/TEMP_REPAIR等"
+      },
+      {
+        "name": "business_id",
+        "label": "业务数据ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "对应被审批的业务记录ID"
+      },
+      {
+        "name": "approval_level",
+        "label": "审批级次",
+        "type": "INT",
+        "nullable": false,
+        "key": "31",
+        "default": "1",
+        "reference": "31",
+        "description": "第几级审核/审批"
+      },
+      {
+        "name": "approval_role",
+        "label": "审批角色",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "如主管科长/主管副段长"
+      },
+      {
+        "name": "approver_id",
+        "label": "审批人ID",
+        "type": "BIGINT",
+        "nullable": true,
+        "key": "FK",
+        "default": "31",
+        "reference": "employee.employee_id",
+        "description": "待审批时可为空"
+      },
+      {
+        "name": "approval_status",
+        "label": "审批结果",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "31",
+        "default": "PENDING",
+        "reference": "31",
+        "description": "PENDING/APPROVED/REJECTED/WITHDRAWN"
+      },
+      {
+        "name": "approval_opinion",
+        "label": "审批意见",
+        "type": "VARCHAR(500)",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "31"
+      },
+      {
+        "name": "approved_at",
+        "label": "审批时间",
+        "type": "DATETIME",
+        "nullable": true,
+        "key": "31",
+        "default": "31",
+        "reference": "31",
+        "description": "审批完成后写入"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "31",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": "31",
+        "description": "31"
+      }
+    ],
+    "indexes": [
+      "IDX(business_type,business_id)",
+      "IDX(approver_id,approval_status)",
+      "通用审批表通过 business_type + business_id 关联不同业务，不固定外键到某一张业务表。"
+    ]
+  },
+  {
+    "table": "component_type",
+    "label": "配件类型信息表",
+    "domain": "配件资源",
+    "purpose": "维护配件品种/规格主数据。这里的“配件”与原有“备件”独立，不替换 spare_part。",
+    "columns": [
+      {
+        "name": "component_type_id",
+        "label": "配件类型ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": null,
+        "reference": null,
+        "description": "配件类型主键"
+      },
+      {
+        "name": "component_code",
+        "label": "配件类型编码",
+        "type": "VARCHAR(64)",
+        "nullable": false,
+        "key": "UK",
+        "default": null,
+        "reference": null,
+        "description": "内部配件类型编码"
+      },
+      {
+        "name": "component_name",
+        "label": "配件名称",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": "如轮对、牵引电机、制动夹钳等"
+      },
+      {
+        "name": "specification",
+        "label": "规格型号",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "unit",
+        "label": "计量单位",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "None",
+        "default": "件",
+        "reference": null,
+        "description": "件/套等"
+      },
+      {
+        "name": "manufacturer",
+        "label": "默认厂家",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": "类型级默认/主要厂家"
+      },
+      {
+        "name": "status",
+        "label": "状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "None",
+        "default": "ENABLED",
+        "reference": null,
+        "description": "ENABLED/DISABLED"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "None",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "updated_at",
+        "label": "更新时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "None",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": null,
+        "description": null
+      }
+    ],
+    "indexes": [
+      "UK(component_code)",
+      "IDX(component_name,status)",
+      "原 spare_part（备件信息表）保持不动；component_type 专门表示配件主数据。",
+      "类型表只描述配件品种，不保存某一个具体序列号，也不直接保存库存数量。",
+      "配件可用数量由 component_instance 按类型、状态和位置聚合得到。"
+    ]
+  },
+  {
+    "table": "component_instance",
+    "label": "配件实例信息表",
+    "domain": "配件资源",
+    "purpose": "按“一件一条”管理具体配件实体，保存序列号、二维码、状态和当前位置，用于上下车、检修、周转和智能排程。",
+    "columns": [
+      {
+        "name": "component_instance_id",
+        "label": "配件实例ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": null,
+        "reference": null,
+        "description": "一个具体实体配件一条记录"
+      },
+      {
+        "name": "component_type_id",
+        "label": "配件类型ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": null,
+        "reference": "component_type.component_type_id",
+        "description": null
+      },
+      {
+        "name": "serial_no",
+        "label": "序列号",
+        "type": "VARCHAR(128)",
+        "nullable": false,
+        "key": "UK",
+        "default": null,
+        "reference": null,
+        "description": "厂家/铭牌序列号"
+      },
+      {
+        "name": "asset_code",
+        "label": "内部配件编码",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "key": "UK",
+        "default": null,
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "qr_code",
+        "label": "二维码编码",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "UK",
+        "default": null,
+        "reference": null,
+        "description": "扫码识别具体配件"
+      },
+      {
+        "name": "lifecycle_status",
+        "label": "生命周期状态",
+        "type": "VARCHAR(24)",
+        "nullable": false,
+        "key": "None",
+        "default": "AVAILABLE",
+        "reference": null,
+        "description": "AVAILABLE/INSTALLED/WAIT_REPAIR/REPAIRING/QUALIFIED/SCRAPPED"
+      },
+      {
+        "name": "location_type",
+        "label": "当前位置类型",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "None",
+        "default": "WAREHOUSE",
+        "reference": null,
+        "description": "WAREHOUSE/WORKSTATION/VEHICLE/OTHER"
+      },
+      {
+        "name": "current_workstation_id",
+        "label": "当前工位ID",
+        "type": "BIGINT",
+        "nullable": true,
+        "key": "FK",
+        "default": null,
+        "reference": "workstation.workstation_id",
+        "description": null
+      },
+      {
+        "name": "current_locomotive_no",
+        "label": "当前装车机车号",
+        "type": "VARCHAR(64)",
+        "nullable": true,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": "装车状态下用于定位实际机车"
+      },
+      {
+        "name": "location_text",
+        "label": "位置补充说明",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": "库位、区域等"
+      },
+      {
+        "name": "manufacturer",
+        "label": "厂家",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "manufacture_date",
+        "label": "出厂日期",
+        "type": "DATE",
+        "nullable": true,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "service_start_date",
+        "label": "投入使用日期",
+        "type": "DATE",
+        "nullable": true,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "accumulated_mileage_km",
+        "label": "累计走行公里",
+        "type": "DECIMAL(12,1)",
+        "nullable": true,
+        "key": "None",
+        "default": "0",
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "wastage_rate",
+        "label": "损耗率(%)",
+        "type": "DECIMAL(5,2)",
+        "nullable": true,
+        "key": "None",
+        "default": "0",
+        "reference": null,
+        "description": "0~100"
+      },
+      {
+        "name": "created_at",
+        "label": "创建时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "None",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "updated_at",
+        "label": "更新时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "None",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": null,
+        "description": null
+      }
+    ],
+    "indexes": [
+      "UK(serial_no)",
+      "UK(asset_code)",
+      "UK(qr_code)",
+      "IDX(component_type_id,lifecycle_status)",
+      "IDX(current_locomotive_no)",
+      "IDX(current_workstation_id,lifecycle_status)",
+      "库存不是单独维护一个 quantity，而是按具体配件实例实时汇总。",
+      "同一实例当前只保留一个状态和位置；状态变化同时写 component_movement_record。",
+      "智能排程可据此判断某类配件有多少件可用、在哪、是否已被占用。"
+    ]
+  },
+  {
+    "table": "task_component_requirement",
+    "label": "检修任务-配件需求关系表",
+    "domain": "工艺配置",
+    "purpose": "定义标准检修任务需要哪类配件、需要多少件以及对配件执行的动作；与原 task_part_requirement（任务-备件关系）并存。",
+    "columns": [
+      {
+        "name": "requirement_id",
+        "label": "需求关系ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": null,
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "task_id",
+        "label": "任务ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": null,
+        "reference": "maintenance_task.task_id",
+        "description": null
+      },
+      {
+        "name": "component_type_id",
+        "label": "配件类型ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": null,
+        "reference": "component_type.component_type_id",
+        "description": null
+      },
+      {
+        "name": "quantity",
+        "label": "需求数量",
+        "type": "INT",
+        "nullable": false,
+        "key": "None",
+        "default": "1",
+        "reference": null,
+        "description": "必须>0"
+      },
+      {
+        "name": "component_action",
+        "label": "配件动作",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "None",
+        "default": "USE",
+        "reference": null,
+        "description": "USE/REMOVE/INSTALL/REPLACE/REPAIR"
+      },
+      {
+        "name": "is_mandatory",
+        "label": "是否必需",
+        "type": "BOOLEAN",
+        "nullable": false,
+        "key": "None",
+        "default": "TRUE",
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "remark",
+        "label": "备注",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": null
+      }
+    ],
+    "indexes": [
+      "UK(task_id,component_type_id,component_action)",
+      "IDX(component_type_id)",
+      "IDX(task_id,is_mandatory)",
+      "模板层只描述配件类型与数量，不提前指定具体序列号。",
+      "具体使用哪一个配件实例，在实际排程中由 schedule_component_assignment 绑定。",
+      "备件需求继续走原 task_part_requirement，不与本表混用。"
+    ]
+  },
+  {
+    "table": "schedule_component_assignment",
+    "label": "排程配件分配表",
+    "domain": "排程核心",
+    "purpose": "在排程阶段为具体任务选择并锁定具体配件实例，支持精确到序列号的配件资源约束。",
+    "columns": [
+      {
+        "name": "allocation_id",
+        "label": "配件分配ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": null,
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "schedule_task_id",
+        "label": "排程任务ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": null,
+        "reference": "vehicle_repair_schedule.schedule_task_id",
+        "description": null
+      },
+      {
+        "name": "component_instance_id",
+        "label": "配件实例ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": null,
+        "reference": "component_instance.component_instance_id",
+        "description": null
+      },
+      {
+        "name": "component_action",
+        "label": "配件动作",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "None",
+        "default": "USE",
+        "reference": null,
+        "description": "USE/REMOVE/INSTALL/REPLACE/REPAIR"
+      },
+      {
+        "name": "assignment_source",
+        "label": "分配来源",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "None",
+        "default": "AUTO",
+        "reference": null,
+        "description": "AUTO/MANUAL"
+      },
+      {
+        "name": "status",
+        "label": "分配状态",
+        "type": "VARCHAR(16)",
+        "nullable": false,
+        "key": "None",
+        "default": "ASSIGNED",
+        "reference": null,
+        "description": "ASSIGNED/IN_USE/DONE/CANCELLED"
+      },
+      {
+        "name": "assigned_by_employee_id",
+        "label": "分配人ID",
+        "type": "BIGINT",
+        "nullable": true,
+        "key": "FK",
+        "default": null,
+        "reference": "employee.employee_id",
+        "description": null
+      },
+      {
+        "name": "assigned_at",
+        "label": "分配时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "None",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "remark",
+        "label": "备注",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": null
+      }
+    ],
+    "indexes": [
+      "UK(schedule_task_id,component_instance_id,component_action)",
+      "IDX(component_instance_id,status)",
+      "IDX(schedule_task_id,status)",
+      "先按 task_component_requirement 得到类型和数量，再从 component_instance 中选择具体实例。",
+      "同一个具体配件不能在时间重叠的有效任务中重复分配。",
+      "第一版即可用于把“配件可用性”纳入智能排程约束。"
+    ]
+  },
+  {
+    "table": "component_movement_record",
+    "label": "配件流转记录表",
+    "domain": "配件业务",
+    "purpose": "记录具体配件从下车、检修、转运、入库、出库到再次装车的流转历史，形成一物一码履历。",
+    "columns": [
+      {
+        "name": "movement_id",
+        "label": "流转记录ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "PK",
+        "default": null,
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "component_instance_id",
+        "label": "配件实例ID",
+        "type": "BIGINT",
+        "nullable": false,
+        "key": "FK",
+        "default": null,
+        "reference": "component_instance.component_instance_id",
+        "description": null
+      },
+      {
+        "name": "vehicle_repair_id",
+        "label": "车辆维修ID",
+        "type": "BIGINT",
+        "nullable": true,
+        "key": "FK",
+        "default": null,
+        "reference": "vehicle_repair.vehicle_repair_id",
+        "description": null
+      },
+      {
+        "name": "schedule_task_id",
+        "label": "排程任务ID",
+        "type": "BIGINT",
+        "nullable": true,
+        "key": "FK",
+        "default": null,
+        "reference": "vehicle_repair_schedule.schedule_task_id",
+        "description": null
+      },
+      {
+        "name": "movement_type",
+        "label": "流转类型",
+        "type": "VARCHAR(24)",
+        "nullable": false,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": "REMOVE/INSTALL/WAREHOUSE_IN/WAREHOUSE_OUT/TRANSFER/REPAIR_START/REPAIR_END/SCRAP"
+      },
+      {
+        "name": "from_location_type",
+        "label": "来源位置类型",
+        "type": "VARCHAR(16)",
+        "nullable": true,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "from_location",
+        "label": "来源位置",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "to_location_type",
+        "label": "目标位置类型",
+        "type": "VARCHAR(16)",
+        "nullable": true,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "to_location",
+        "label": "目标位置",
+        "type": "VARCHAR(128)",
+        "nullable": true,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "operator_employee_id",
+        "label": "操作人员ID",
+        "type": "BIGINT",
+        "nullable": true,
+        "key": "FK",
+        "default": null,
+        "reference": "employee.employee_id",
+        "description": null
+      },
+      {
+        "name": "moved_at",
+        "label": "流转时间",
+        "type": "DATETIME",
+        "nullable": false,
+        "key": "None",
+        "default": "CURRENT_TIMESTAMP",
+        "reference": null,
+        "description": null
+      },
+      {
+        "name": "remark",
+        "label": "备注",
+        "type": "VARCHAR(255)",
+        "nullable": true,
+        "key": "None",
+        "default": null,
+        "reference": null,
+        "description": null
+      }
+    ],
+    "indexes": [
+      "IDX(component_instance_id,moved_at)",
+      "IDX(vehicle_repair_id,moved_at)",
+      "IDX(schedule_task_id)",
+      "IDX(movement_type,moved_at)",
+      "component_instance 只保存当前状态，本表保存完整历史。",
+      "拆下、装上、送修、修竣、入库、出库、转运等均可形成流转记录。",
+      "本次只新增配件体系，不增加采购、领料审批等后续流程。"
+    ]
+  }
+]

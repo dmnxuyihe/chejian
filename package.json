@@ -9,6 +9,7 @@
   "scripts": {
     "db:init": "node scripts/database.mjs init",
     "db:check": "node scripts/database.mjs check",
+    "db:schema": "node scripts/generate-schema.mjs",
     "test:db-init": "node tests/database_init.mjs",
     "test:planning": "node tests/planning_calendar.mjs",
     "test:persistence": "node tests/demo_persistence.mjs && node tests/database_persistence.mjs",
