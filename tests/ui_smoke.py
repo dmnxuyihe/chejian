@@ -31,7 +31,7 @@ def wait_http(url, timeout=10):
         time.sleep(.1)
     return False
 
-server = subprocess.Popen(['node','start.js',f'--port={PORT}','--no-open'], cwd=ROOT, env={**os.environ,'NO_OPEN':'1'}, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+server = subprocess.Popen(['node','start.js',f'--port={PORT}','--no-open','--local-demo'], cwd=ROOT, env={**os.environ,'NO_OPEN':'1'}, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 if not wait_http(BASE):
     print(server.stdout.read())
     raise RuntimeError('server did not start')

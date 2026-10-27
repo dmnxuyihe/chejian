@@ -13,7 +13,7 @@ const edgeCandidates=[
 const browser=edgeCandidates.find(fs.existsSync)
 if(!browser) throw new Error('未找到可用于自动化的 Microsoft Edge')
 
-const server=spawn(process.execPath,['start.js',`--port=${port}`,'--no-open'],{cwd:process.cwd(),stdio:'ignore'})
+const server=spawn(process.execPath,['start.js',`--port=${port}`,'--no-open','--local-demo'],{cwd:process.cwd(),stdio:'ignore'})
 const profile=path.join(os.tmpdir(),`rail-scheduler-edge-${process.pid}`)
 let chrome
 const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms))

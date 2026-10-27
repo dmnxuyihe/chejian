@@ -382,19 +382,19 @@ export function qualityDecision(state, scheduleTaskId, result, opinion='') {
 }
 
 export function addPlan(state, data) {
-  const validation = validatePlanData(data)
+  const validation = validatePlan(state, data)
   if (!validation.ok) return null
   const id = Math.max(0,...state.vehicleRepairs.map(v=>v.id))+1
   state.vehicleRepairs.push({
     id,
-    locomotiveNo:data.locomotiveNo,
+    locomotiveNo:data.locomotiveNo.trim(),
     repairProgramId:1,
     plannedEntryAt:data.plannedEntryAt,
     plannedExitAt:data.plannedExitAt,
     actualEntryAt:null, actualExitAt:null,
     status:'DRAFT', approvalStatus:'DRAFT', currentVersionId:null,
     ownerBureau:data.ownerBureau || '模拟局', ownerDepot:data.ownerDepot || '模拟段',
-    repairSequence:1, mileageKm:Number(data.mileageKm||0), planSource:'MANUAL', priority:Number(data.priority||50), remark:data.remark||''
+    repairSequence:1, mileageKm:Number(data.mileageKm ?? 0), planSource:'MANUAL', priority:Number(data.priority ?? 50), remark:data.remark||''
   })
   state.selectedVehicleRepairId = id
   log(state,'计划',`新增检修计划 ${data.locomotiveNo}`)
@@ -415,10 +415,11 @@ export function updatePlan(state, id, data) {
   const plan = state.vehicleRepairs.find(v => v.id === Number(id))
   if (!plan) return { ok:false, message:'计划不存在' }
   if (plan.status !== 'DRAFT') return { ok:false, message:'已提交排程的计划不能直接编辑' }
-  const validation = validatePlanData({ ...plan, ...data })
+  if (state.pc1SchedulePreview?.vehicleRepairIds?.includes(plan.id)) return { ok:false, message:'本车正在模拟排程，请先结束模拟再编辑计划' }
+  const validation = validatePlan(state, { ...plan, ...data }, plan.id)
   if (!validation.ok) return validation
   Object.assign(plan, {
-    locomotiveNo: data.locomotiveNo ?? plan.locomotiveNo,
+    locomotiveNo: (data.locomotiveNo ?? plan.locomotiveNo).trim(),
     plannedEntryAt: data.plannedEntryAt ?? plan.plannedEntryAt,
     plannedExitAt: data.plannedExitAt ?? plan.plannedExitAt,
     priority: Number(data.priority ?? plan.priority),
@@ -435,18 +436,21 @@ export function deletePlan(state, id) {
   if (!plan) return { ok:false, message:'计划不存在' }
   if (plan.status !== 'DRAFT') return { ok:false, message:'已提交的计划不能删除' }
   if (state.schedules.some(s => s.vehicleRepairId === numericId)) return { ok:false, message:'计划已经生成排程，不能删除' }
+  if (state.pc1SchedulePreview?.vehicleRepairIds?.includes(numericId)) return { ok:false, message:'本车正在模拟排程，请先结束模拟再删除计划' }
   state.vehicleRepairs = state.vehicleRepairs.filter(v => v.id !== numericId)
   if (state.selectedVehicleRepairId === numericId) state.selectedVehicleRepairId = state.vehicleRepairs[0]?.id || null
   log(state, '计划', `删除检修计划 ${plan.locomotiveNo}`)
   return { ok:true }
 }
 
-function validatePlanData(data) {
-  if (!String(data.locomotiveNo || '').trim()) return { ok:false, message:'机车号不能为空' }
+export function validatePlan(state, data, excludeId = null) {
+  const name = String(data.locomotiveNo || '').trim()
+  if (!name || name.length > 80) return { ok:false, message:'机车号不能为空且不能超过80字' }
   const entry = new Date(data.plannedEntryAt)
   const exit = new Date(data.plannedExitAt)
   if (Number.isNaN(entry.getTime()) || Number.isNaN(exit.getTime())) return { ok:false, message:'计划时间无效' }
   if (entry >= exit) return { ok:false, message:'计划交车时间必须晚于进场时间' }
+  if (state.vehicleRepairs.some(v => v.id !== excludeId && v.locomotiveNo.trim().toUpperCase() === name.toUpperCase() && v.plannedEntryAt.slice(0,10) === data.plannedEntryAt.slice(0,10))) return { ok:false, message:'相同车辆和入段日的计划已存在，请编辑已有计划' }
   const priority = Number(data.priority ?? 50)
   const mileage = Number(data.mileageKm ?? 0)
   if (!Number.isFinite(priority) || priority < 0) return { ok:false, message:'优先级必须是非负数' }

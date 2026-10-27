@@ -24,4 +24,6 @@ assert.equal(roles.scheduling.pages.dashboard.implementationStatus,undefined,'�
 assert.equal(roles.technical.pages.process.implementationStatus,undefined,'现有工艺页不应被替换为占位页')
 assert.equal(roles.approval.pages[roles.approval.defaultPage].implementationStatus,'planned','未开发页面必须明确标记')
 
-console.log(JSON.stringify({passed:true,roles:18,primaryAreas:60,secondaryPages:129,implementedEntries:15,plannedEntries:114},null,2))
+const implementedEntries = roleList.reduce((sum, role) => sum + role.nav.filter(n => n.status === 'implemented').length, 0)
+assert.equal(roles.planning.pages['g2-p2'].implementationStatus,undefined,'月度查询入口应接入实际日历')
+console.log(JSON.stringify({passed:true,roles:18,primaryAreas:60,secondaryPages:129,implementedEntries,plannedEntries:129-implementedEntries},null,2))

@@ -6,7 +6,34 @@
 
 ## 1. Quick Start
 
-无需安装第三方前端依赖，只需要 Node.js（建议 Node.js 20+）。
+PC1月度导入、单车及车间日历的操作说明与排程接入约定见 [PC1日历演示交接](docs/PC1_徐义合_演示交接.md)。
+
+默认使用PostgreSQL后端，需要Node.js 20.12+和一个空的PostgreSQL数据库。[完整部署和数据迁移说明](docs/PostgreSQL接入与演示部署.md)。
+
+首次部署（已有`.env`时保留现有配置）：
+
+```powershell
+npm ci
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
+```
+
+编辑`.env`中的`DATABASE_URL`，然后执行：
+
+```powershell
+npm run db:init
+npm run db:check
+npm start
+```
+
+`db:init`自动建表并写入初始演示数据；重复执行保留已有数据。后续更新代码只需`git pull`、`npm ci`并重启服务。
+
+迁移当前演示数据到新服务器：先在页面“保存与恢复”导出JSON备份，再在新数据库首次初始化时使用：
+
+```powershell
+npm run db:init -- --seed="D:/backups/PC1备份.json"
+```
+
+该参数仅用于空数据区，已有数据不会被覆盖。`.env`和备份文件保留在本机，GitHub只提交配置示例、建表脚本与程序。
 
 ### Windows
 
@@ -28,10 +55,10 @@ start.bat
 npm start
 ```
 
-默认地址：
+未配置`PORT`时默认地址为5173；复制配置示例后使用5193：
 
 ```text
-http://127.0.0.1:5173
+http://127.0.0.1:5193/#/planning/plans
 ```
 
 启动脚本会自动尝试打开浏览器。若只想启动服务：
@@ -351,7 +378,7 @@ npm run test:ui
 
 第一版故意不做以下复杂模块：
 
-- 真实后端 / 数据库连接（当前为浏览器内存演示数据）
+- 细分业务接口和账号权限扩展（PC1已接入PostgreSQL，支持共享数据版本校验及自动读取更新）
 - 账号密码登录
 - 计划多级审核审批
 - 采购计划、采购订单、物资 3.1 同步

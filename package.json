@@ -3,7 +3,18 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=20.12.0"
+  },
   "scripts": {
+    "db:init": "node scripts/database.mjs init",
+    "db:check": "node scripts/database.mjs check",
+    "test:db-init": "node tests/database_init.mjs",
+    "test:planning": "node tests/planning_calendar.mjs",
+    "test:persistence": "node tests/demo_persistence.mjs && node tests/database_persistence.mjs",
+    "test:postgres": "node tests/postgres_integration.mjs",
+    "test:postgres:ui": "node tests/postgres_ui.mjs",
+    "test:planning:ui": "node tests/planning_ui.mjs",
     "start": "node start.js",
     "serve": "node start.js --no-open",
     "test:ui": "node tests/ui_smoke.mjs",
@@ -11,6 +22,9 @@
     "test:acceptance": "node tests/v01_acceptance.mjs",
     "test:logic": "node tests/schedule_logic.mjs",
     "test:roles": "node tests/phase_one_roles.mjs",
-    "test": "node tests/phase_one_roles.mjs && node tests/schedule_logic.mjs && node tests/v01_acceptance.mjs && node tests/ui_smoke.mjs"
+    "test": "node tests/phase_one_roles.mjs && node tests/schedule_logic.mjs && node tests/v01_acceptance.mjs && node tests/planning_calendar.mjs && node tests/demo_persistence.mjs && node tests/database_persistence.mjs && node tests/ui_smoke.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
   }
 }

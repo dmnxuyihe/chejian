@@ -21,6 +21,7 @@ coverage/
 # Generated test reports and screenshots
 test-results/
 test-artifacts/
+backups/
 
 # Local editor and OS files
 .vscode/

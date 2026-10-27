@@ -3,8 +3,41 @@ import { renderShell } from './layout.js'
 import { openModal, toast } from './ui.js'
 import { roleSelectionPage } from '../role-selection/index.js'
 import { roles } from '../roles/index.js'
+import { createDemoPersistence } from './demo-persistence.js'
+import { createDatabasePersistence } from './database-persistence.js'
 
 export const state = createState()
+// Access can fail in restricted/private browser contexts. Keep the page usable and
+// expose actual save errors instead of silently claiming that data was saved.
+let demoPersistence, initialized = false
+function updateSaveStatus(status) {
+  const el = document.querySelector('.pc-save-row [role="status"], [data-pc-query-status]')
+  if (el) { el.textContent = `${status.message}${status.savedAt && status.ok ? ` · ${new Date(status.savedAt).toLocaleString('zh-CN', { hour12: false })}` : ''}`; el.classList.toggle('pc-error-text', !status.ok) }
+}
+async function initialize() {
+  app.innerHTML = '<div class="empty" role="status">正在加载检修计划数据…</div>'
+  try {
+    const response = await fetch('/api/config', { cache: 'no-store' })
+    if (!response.ok) throw new Error('无法读取后端配置')
+    const config = await response.json()
+    if (config.storage === 'postgresql') {
+      demoPersistence = createDatabasePersistence(state, { onStatus: updateSaveStatus, onRemote: () => render(false) })
+      const result = await demoPersistence.load()
+      if (!result.ok) throw new Error(result.message)
+      setInterval(() => { if (!document.hidden && !document.querySelector('.modal-backdrop, .pc-data-confirm')) demoPersistence.poll() }, 3000)
+    } else if (config.storage === 'local') {
+      demoPersistence = createDemoPersistence(state, { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) })
+      demoPersistence.load()
+    } else throw new Error('后端存储配置无效')
+    initialized = true
+    if (!location.hash) location.hash = '#/select'
+    else render()
+  } catch (error) {
+    app.innerHTML = '<div class="empty"><strong>无法加载数据库</strong><p data-load-error></p><button class="btn" data-load-retry>重试连接</button></div>'
+    document.querySelector('[data-load-error]').textContent = error.message
+    document.querySelector('[data-load-retry]').addEventListener('click', () => location.reload())
+  }
+}
 let currentRoleId = null
 let currentPageId = null
 
@@ -51,7 +84,7 @@ export function openWorkerPicker() {
 
 function roleContext(role,page) {
   return {
-    state, role, page,
+    state, role, page, demoPersistence,
     enterRole, openWorkerPicker,
     navigate(pageId){ enterRole(role.id,pageId) },
     rerender(){ render() },
@@ -68,7 +101,9 @@ function bindShell(role) {
   }))
 }
 
-export function render() {
+export function render(persist = true) {
+  if (!initialized) return
+  if (persist !== false) demoPersistence.save()
   const route=parseRoute()
   if (route.type==='select') {
     currentRoleId=null; currentPageId=null
@@ -91,11 +126,11 @@ export function render() {
 }
 
 window.addEventListener('hashchange',render)
+window.addEventListener('pagehide', () => demoPersistence?.save())
 window.addEventListener('DOMContentLoaded',()=>{
-  if (localStorage.getItem('scheduler-theme')==='dark') document.documentElement.classList.add('dark')
-  if (!location.hash) location.hash='#/select'
-  else render()
+  try { if (localStorage.getItem('scheduler-theme')==='dark') document.documentElement.classList.add('dark') } catch {}
+  initialize()
 })
 
 window.__APP_STATE__=state
-window.__APP_DEBUG__={render,enterRole,openWorkerPicker,getRoute:()=>({role:currentRoleId,page:currentPageId})}
+window.__APP_DEBUG__={render,enterRole,openWorkerPicker,getRoute:()=>({role:currentRoleId,page:currentPageId}),getPersistence:()=>demoPersistence}

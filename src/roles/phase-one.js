@@ -23,7 +23,7 @@ const plannedPage = (roleLabel, section, label) => ({
 const specs = [
   ['planning','计划管理人员','计',[
     ['年度检修计划',['年度计划同步与汇总','年度计划查询与交验统计']],
-    ['月度检修计划',['月度计划同步与编制','月度计划查询与交验统计']],
+    ['月度检修计划',['月度计划同步与编制','月度计划日历查询']],
     ['配件月度计划',['配件下车检修计划','配件上车计划']],
     ['临修及产线计划',['整车临修计划','产线检修计划编制']],
   ]],
@@ -121,7 +121,7 @@ const specs = [
 
 const legacy = { 'system-admin':systemAdminRole, planning:planningRole, scheduling:schedulingRole, foreman:foremanRole, worker:workerRole, quality:qualityRole, technical:technicalRole }
 const implementations = {
-  planning:{'月度计划同步与编制':'plans'},
+  planning:{'月度计划同步与编制':'plans','月度计划日历查询':'g2-p2'},
   scheduling:{'整车日计划编排与调整':'dashboard','日计划发布与任务下发':'gantt','整车日计划/修程查询':'workforce','工序工位自动匹配':'resources','计划下发与执行跟踪':'exceptions'},
   foreman:{'整车派工与人员调整':'team-tasks'},
   worker:{'整车检修作业':'my-tasks'},

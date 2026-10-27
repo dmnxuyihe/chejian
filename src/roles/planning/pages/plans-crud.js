@@ -1,24 +1,32 @@
 import { pageHeader, statCard } from '../../../shared/templates.js'
 import { badge, openModal, toast, escapeHtml } from '../../../core/ui.js'
 import { fmtFullDateTime, statusBadge } from '../../../core/derived.js'
-import { addPlan, updatePlan, deletePlan, submitPlan } from '../../../core/actions.js'
+import { addPlan, updatePlan, deletePlan, submitPlan, validatePlan } from '../../../core/actions.js'
+import { dateKey, ensurePlanningView } from '../../../core/planning-view.js'
 
 const esc = escapeHtml
 
 function form(ctx, row = null) {
+  const view = ensurePlanningView(ctx.state)
+  const today = dateKey(new Date())
+  const entryDate = view.day?.startsWith(view.month) ? view.day : today.startsWith(view.month) ? today : `${view.month}-01`
+  const deadline = new Date(`${entryDate}T18:00:00`); deadline.setDate(deadline.getDate() + 14)
   openModal({
     title: `${row ? '编辑' : '新增'}车辆检修计划`,
     wide: true,
     body: `<div class="grid grid-2">
-      <div class="field"><label>机车号</label><input class="input" data-f="locomotiveNo" value="${esc(row?.locomotiveNo || '')}" placeholder="HXD1C0002"></div>
-      <div class="field"><label>修程</label><input class="input" value="高级修（构架/轮驱）" disabled></div>
-      <div class="field"><label>计划进场</label><input class="input" data-f="entry" type="datetime-local" value="${(row?.plannedEntryAt || '2026-10-06T08:00:00').slice(0,16)}"></div>
-      <div class="field"><label>计划交车</label><input class="input" data-f="exit" type="datetime-local" value="${(row?.plannedExitAt || '2026-10-10T18:00:00').slice(0,16)}"></div>
-      <div class="field"><label>优先级</label><input class="input" data-f="priority" type="number" value="${row?.priority ?? 80}"></div>
-      <div class="field"><label>累计走行公里</label><input class="input" data-f="mileage" type="number" value="${row?.mileageKm ?? 480000}"></div>
-      <div class="field" style="grid-column:1/-1"><label>备注</label><textarea class="textarea" data-f="remark">${esc(row?.remark || '')}</textarea></div>
+      <div class="field"><label for="plan-car">机车号（必填）</label><input id="plan-car" class="input" data-f="locomotiveNo" required maxlength="80" value="${esc(row?.locomotiveNo || '')}" placeholder="HXD1C0002"></div>
+      <div class="field"><label for="plan-program">修程</label><input id="plan-program" class="input" value="C5 构架 / 轮驱" disabled></div>
+      <div class="field"><label for="plan-entry">计划入段（必填）</label><input id="plan-entry" class="input" data-f="entry" required type="datetime-local" value="${(row?.plannedEntryAt || `${entryDate}T08:00:00`).slice(0,16)}"></div>
+      <div class="field"><label for="plan-exit">要求完成（必填）</label><input id="plan-exit" class="input" data-f="exit" required type="datetime-local" value="${(row?.plannedExitAt || `${dateKey(deadline)}T18:00:00`).slice(0,16)}"></div>
+      <div class="field"><label for="plan-priority">优先级</label><input id="plan-priority" class="input" data-f="priority" type="number" min="0" value="${row?.priority ?? 80}"></div>
+      <div class="field"><label for="plan-mileage">累计走行公里</label><input id="plan-mileage" class="input" data-f="mileage" type="number" min="0" value="${row?.mileageKm ?? 480000}"></div>
+      <div class="field" style="grid-column:1/-1"><label for="plan-remark">备注</label><textarea id="plan-remark" class="textarea" data-f="remark">${esc(row?.remark || '')}</textarea></div>
+      <p data-plan-error role="alert" class="pc-error-text" style="grid-column:1/-1;margin:0"></p>
     </div>`,
-    onConfirm(modal) {
+    async onConfirm(modal) {
+      const invalid = [...modal.querySelectorAll('input')].find(input => !input.validity.valid)
+      if (invalid) { invalid.reportValidity(); return false }
       const data = {
         locomotiveNo: modal.querySelector('[data-f="locomotiveNo"]').value.trim(),
         plannedEntryAt: `${modal.querySelector('[data-f="entry"]').value}:00`,
@@ -27,13 +35,15 @@ function form(ctx, row = null) {
         mileageKm: modal.querySelector('[data-f="mileage"]').value,
         remark: modal.querySelector('[data-f="remark"]').value.trim(),
       }
-      if (!data.locomotiveNo || data.plannedEntryAt.length < 19 || data.plannedExitAt.length < 19) {
-        toast('保存失败', '请填写机车号和计划时间', 'warning'); return false
-      }
+      const validation = validatePlan(ctx.state, data, row?.id)
+      if (!validation.ok) { modal.querySelector('[data-plan-error]').textContent = validation.message; return false }
       const newId = row ? null : addPlan(ctx.state, data)
       const result = row ? updatePlan(ctx.state, row.id, data) : (newId ? { ok:true, id:newId } : { ok:false, message:'计划数据不合法，请检查时间、优先级和里程' })
-      if (!result.ok) { toast('保存失败', result.message, 'warning'); return false }
-      toast('保存成功', '计划已保存'); ctx.rerender()
+      if (!result.ok) { modal.querySelector('[data-plan-error]').textContent = result.message; return false }
+      view.month = data.plannedEntryAt.slice(0,7); view.day = data.plannedEntryAt.slice(0,10); view.vehicleFilter = ''; view.tab = 'monthly'
+      ctx.rerender()
+      const saved = await ctx.demoPersistence?.save()
+      toast(saved && !saved.ok ? '尚未保存' : '保存成功', saved && !saved.ok ? '修改保留在当前页面，请查看保存状态并重试' : '计划已保存', saved && !saved.ok ? 'warning' : 'success')
     }
   })
 }
@@ -51,10 +61,17 @@ export const plansCrudPage = {
     document.querySelectorAll('[data-edit-plan]').forEach(btn => btn.addEventListener('click', () => {
       const row = ctx.state.vehicleRepairs.find(v => v.id === Number(btn.dataset.editPlan)); if (row) form(ctx, row)
     }))
-    document.querySelectorAll('[data-delete-plan]').forEach(btn => btn.addEventListener('click', () => {
-      const result = deletePlan(ctx.state, btn.dataset.deletePlan)
-      toast(result.ok ? '删除成功' : '删除失败', result.ok ? '计划已删除' : result.message, result.ok ? 'success' : 'warning')
-      if (result.ok) ctx.rerender()
+    document.querySelectorAll('[data-delete-plan]').forEach(btn => btn.addEventListener('click', async () => {
+      const row = ctx.state.vehicleRepairs.find(v => v.id === Number(btn.dataset.deletePlan))
+      if (!row) return
+      openModal({ title: '删除草稿计划', body: `<p>确认删除 ${esc(row.locomotiveNo)} 的 ${esc(row.plannedEntryAt.slice(0,10))} 入段计划？</p>`, confirmText: '删除计划', async onConfirm() {
+        const result = deletePlan(ctx.state, row.id)
+        if (result.ok) {
+          ctx.rerender()
+          const saved = await ctx.demoPersistence?.save()
+          toast(saved && !saved.ok ? '删除尚未保存' : '删除成功', saved && !saved.ok ? '请查看保存状态并重试' : '计划已删除', saved && !saved.ok ? 'warning' : 'success')
+        } else { toast('删除失败', result.message, 'warning'); return false }
+      } })
     }))
     document.querySelectorAll('[data-submit-plan]').forEach(btn => btn.addEventListener('click', () => {
       const ok = submitPlan(ctx.state, btn.dataset.submitPlan)
