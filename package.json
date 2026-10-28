@@ -12,10 +12,11 @@
     "db:schema": "node scripts/generate-schema.mjs",
     "test:db-init": "node tests/database_init.mjs",
     "test:planning": "node tests/planning_calendar.mjs",
+    "test:planning-import": "node tests/planning_import.mjs",
     "test:persistence": "node tests/demo_persistence.mjs && node tests/database_persistence.mjs",
     "test:postgres": "node tests/postgres_integration.mjs",
     "test:postgres:ui": "node tests/postgres_ui.mjs",
-    "test:planning:ui": "node tests/planning_ui.mjs",
+    "test:planning:ui": "node tests/planning_page_ui.mjs",
     "start": "node start.js",
     "serve": "node start.js --no-open",
     "test:ui": "node tests/ui_smoke.mjs",
@@ -26,6 +27,10 @@
     "test": "node tests/phase_one_roles.mjs && node tests/schedule_logic.mjs && node tests/v01_acceptance.mjs && node tests/planning_calendar.mjs && node tests/demo_persistence.mjs && node tests/database_persistence.mjs && node tests/ui_smoke.mjs"
   },
   "dependencies": {
+    "@e965/xlsx": "^0.20.3",
     "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "playwright": "^1.64.1"
   }
 }

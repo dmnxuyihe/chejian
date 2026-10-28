@@ -40,8 +40,9 @@ function validateData(data) {
   const ids = key => new Set(data[key].map(v => v.id))
   const vehicles = ids('vehicleRepairs'), tasks = ids('tasks'), stations = ids('workstations'), versions = ids('scheduleVersions')
   for (const row of data.vehicleRepairs) {
-    if (typeof row.locomotiveNo !== 'string' || !row.locomotiveNo.trim() || !validDate(row.plannedEntryAt) || !validDate(row.plannedExitAt) || new Date(row.plannedExitAt) <= new Date(row.plannedEntryAt) ||
-      !Number.isFinite(row.priority) || !Number.isFinite(row.mileageKm) || typeof row.status !== 'string' || (row.currentVersionId != null && !versions.has(row.currentVersionId))) throw new Error('车辆计划日期、状态或排程版本无效')
+    if (typeof row.locomotiveNo !== 'string' || !row.locomotiveNo.trim() || !validDate(row.plannedEntryAt) ||
+      (row.plannedExitAt != null && (!validDate(row.plannedExitAt) || new Date(row.plannedExitAt) <= new Date(row.plannedEntryAt))) ||
+      !Number.isFinite(row.priority) || (row.mileageKm != null && !Number.isFinite(row.mileageKm)) || typeof row.status !== 'string' || (row.currentVersionId != null && !versions.has(row.currentVersionId))) throw new Error('车辆计划日期、状态或排程版本无效')
   }
   for (const row of data.scheduleVersions) if (!vehicles.has(row.vehicleRepairId) || !['DRAFT', 'PUBLISHED'].includes(row.status)) throw new Error('排程版本与车辆不匹配')
   if (data.vehicleRepairs.some(row => row.currentVersionId != null && !data.scheduleVersions.some(v => v.id === row.currentVersionId && v.vehicleRepairId === row.id))) throw new Error('当前排程版本不属于该车辆')

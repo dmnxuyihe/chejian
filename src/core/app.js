@@ -87,7 +87,7 @@ function roleContext(role,page) {
     state, role, page, demoPersistence,
     enterRole, openWorkerPicker,
     navigate(pageId){ enterRole(role.id,pageId) },
-    rerender(){ render() },
+    rerender(persist = true){ render(persist) },
   }
 }
 

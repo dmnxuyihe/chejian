@@ -403,7 +403,7 @@ export function addPlan(state, data) {
 
 export function submitPlan(state, id) {
   const plan = state.vehicleRepairs.find(v=>v.id===Number(id))
-  if (!plan || plan.status !== 'DRAFT') return false
+  if (!plan || !['DRAFT', 'UNSCHEDULED'].includes(plan.status)) return false
   ensureVehicleSchedules(state, plan)
   plan.status = 'SCHEDULED'
   state.selectedVehicleRepairId = plan.id
