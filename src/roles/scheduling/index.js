@@ -3,6 +3,7 @@ import { ganttPage } from './pages/gantt.js'
 import { workforcePage } from './pages/workforce.js'
 import { resourcesPage } from './pages/resources.js'
 import { exceptionsPage } from './pages/exceptions.js'
+import { workshopCalendarPage } from './pages/workshop-calendar.js'
 export const schedulingRole = {
   id:'scheduling', label:'生产排程 / 调度人员', short:'排', group:'智能排程', defaultPage:'dashboard',
   nav:[
@@ -12,5 +13,5 @@ export const schedulingRole = {
     {id:'resources',label:'工位与资源',icon:'资'},
     {id:'exceptions',label:'异常约束',icon:'!'},
   ],
-  pages:{dashboard:dashboardPage,gantt:ganttPage,workforce:workforcePage,resources:resourcesPage,exceptions:exceptionsPage}
+  pages:{dashboard:dashboardPage,gantt:ganttPage,workforce:workforcePage,resources:resourcesPage,exceptions:exceptionsPage,'workshop-calendar':workshopCalendarPage}
 }

@@ -52,6 +52,10 @@ state.selectedVehicleRepairId = id
 assert.ok(publishSchedule(state))
 assert.ok(confirmedExit(state, id))
 assert.equal(planningTasks(state, id)[0].planKind, 'formal')
+const currentRows = planningTasks(state, id)
+state.schedules.push({ ...currentRows[0], id: 99001, versionId: 99001, plannedEndAt: '2027-12-31T23:59:00' })
+assert.equal(planningTasks(state, id).length, currentRows.length, '历史版本任务不应出现在当前日历')
+assert.notEqual(confirmedExit(state, id), '2027-12-31T23:59:00', '正式出段不得聚合历史版本任务')
 const savedRows = structuredClone(state.schedules)
 state.pc1SchedulePreview = { vehicleRepairIds: [id], schedules: [{ ...planningTasks(state, id)[0], plannedStartAt: '2026-11-01T23:00:00', plannedEndAt: '2026-11-03T00:00:00' }] }
 assert.equal(planningTasks(state, id).length, 1)

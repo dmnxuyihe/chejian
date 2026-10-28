@@ -122,7 +122,7 @@ const specs = [
 const legacy = { 'system-admin':systemAdminRole, planning:planningRole, scheduling:schedulingRole, foreman:foremanRole, worker:workerRole, quality:qualityRole, technical:technicalRole }
 const implementations = {
   planning:{'月度计划同步与编制':'plans','月度计划日历查询':'g2-p2'},
-  scheduling:{'整车日计划编排与调整':'dashboard','日计划发布与任务下发':'gantt','整车日计划/修程查询':'workforce','工序工位自动匹配':'resources','计划下发与执行跟踪':'exceptions'},
+  scheduling:{'整车日计划编排与调整':'dashboard','日计划发布与任务下发':'gantt','整车日计划/修程查询':'workforce','生产日历与节假日配置':'workshop-calendar','工序工位自动匹配':'resources','计划下发与执行跟踪':'exceptions'},
   foreman:{'整车派工与人员调整':'team-tasks'},
   worker:{'整车检修作业':'my-tasks'},
   inspector:{'整车检修专检':'inspections'},

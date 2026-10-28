@@ -12,6 +12,8 @@
     "db:schema": "node scripts/generate-schema.mjs",
     "test:db-init": "node tests/database_init.mjs",
     "test:planning": "node tests/planning_calendar.mjs",
+    "test:workshop-calendar": "node tests/workshop_calendar.mjs",
+    "db:seed-workshop-calendar": "node scripts/seed-workshop-calendar.mjs",
     "test:planning-import": "node tests/planning_import.mjs",
     "test:persistence": "node tests/demo_persistence.mjs && node tests/database_persistence.mjs",
     "test:postgres": "node tests/postgres_integration.mjs",

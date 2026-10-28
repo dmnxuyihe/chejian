@@ -30,7 +30,10 @@ function drawable(row) {
 export function planningTasks(state, vehicleId = null) {
   const preview = state.pc1SchedulePreview
   const previewIds = new Set((preview?.vehicleRepairIds || []).map(Number))
-  const rows = (state.schedules || []).filter(s => !previewIds.has(s.vehicleRepairId)).map(s => {
+  const rows = (state.schedules || []).filter(s => {
+    const vehicle = state.vehicleRepairs.find(v => v.id === s.vehicleRepairId)
+    return !previewIds.has(s.vehicleRepairId) && vehicle?.currentVersionId != null && s.versionId === vehicle.currentVersionId
+  }).map(s => {
     const vehicle = state.vehicleRepairs.find(v => v.id === s.vehicleRepairId)
     const version = state.scheduleVersions.find(v => v.id === vehicle?.currentVersionId)
     return { ...s, planKind: version?.status === 'PUBLISHED' ? 'formal' : 'draft' }
@@ -45,7 +48,7 @@ export function planningTasks(state, vehicleId = null) {
 export function confirmedExit(state, vehicleId) {
   const vehicle = state.vehicleRepairs.find(v => v.id === Number(vehicleId))
   if (!state.scheduleVersions.some(v => v.id === vehicle?.currentVersionId && v.status === 'PUBLISHED')) return null
-  const rows = state.schedules.filter(s => s.vehicleRepairId === Number(vehicleId) && drawable(s))
+  const rows = state.schedules.filter(s => s.vehicleRepairId === Number(vehicleId) && s.versionId === vehicle.currentVersionId && drawable(s))
   return rows.length ? rows.reduce((last, s) => s.plannedEndAt > last ? s.plannedEndAt : last, rows[0].plannedEndAt) : null
 }
 
