@@ -1,3 +1,5 @@
+import { vehicleDetails } from '../../../shared/vehicle-details.js'
+import { actionIcon } from '../../../shared/icons.js'
 import { pageHeader, emptyState } from '../../../shared/templates.js'
 import { escapeHtml as esc, openModal, toast } from '../../../core/ui.js'
 import { fmtDateTime, fmtFullDateTime, taskOf, taskStatusLabel, workstationOf } from '../../../core/derived.js'
@@ -62,13 +64,13 @@ function dayPanel(state, rows) {
   const taskCount = groups.reduce((sum, item) => sum + item.tasks.length, 0)
   return `<div class="wc-day-panel">
     <div class="pc-plan-day-summary"><div><span>当日任务</span><strong>${taskCount}</strong></div><div><span>涉及车辆</span><strong>${groups.length}</strong></div></div>
-    <div class="wc-vehicle-list">${groups.map(item => { const expanded = view.expandedDayVehicles.has(item.vehicleId); return `<section class="wc-vehicle-accordion"><button type="button" class="wc-vehicle-toggle" data-wc-toggle-vehicle="${item.vehicleId}" aria-expanded="${expanded}"><span><strong>${esc(item.vehicle?.locomotiveNo || '未知车辆')}</strong><small>${item.tasks.length}项任务 · ${kindLabel[item.kind]}</small></span><b>${expanded ? '收起' : '展开'}⌄</b></button>${expanded ? `<div class="wc-vehicle-tasks">${item.tasks.map(row => taskButton(state,row)).join('')}</div>` : ''}</section>` }).join('') || '<p class="pc-plan-empty">当日暂无检修车辆。</p>'}</div>
+    <div class="wc-vehicle-list">${groups.map(item => { const expanded = view.expandedDayVehicles.has(item.vehicleId); return `<section class="wc-vehicle-accordion"><button type="button" class="wc-vehicle-toggle" data-wc-toggle-vehicle="${item.vehicleId}" aria-expanded="${expanded}"><span><strong>${esc(item.vehicle?.locomotiveNo || '未知车辆')}</strong><small>${item.tasks.length}项任务 · ${kindLabel[item.kind]}</small></span><b>${expanded ? '收起' : '展开'}⌄</b></button>${expanded ? `<div class="wc-vehicle-tasks">${vehicleDetails(state,item.vehicle,planningTasks(state,item.vehicleId),view.day)}${item.tasks.map(row => taskButton(state,row)).join('')}</div>` : ''}</section>` }).join('') || '<p class="pc-plan-empty">当日暂无检修车辆。</p>'}</div>
   </div>`
 }
 
-function toolbar(state) {
+function toolbar(state,demo=false) {
   const showMonth = view.tab !== 'gantt'
-  return `<div class="wc-toolbar"><div class="wc-toolbar-top"><div class="tabs" aria-label="车间任务视图">${[['workshop','车间任务日历'],['vehicle','单车日历'],['gantt','多车甘特图']].map(([key,label]) => `<button type="button" class="tab ${view.tab === key ? 'active' : ''}" data-wc-tab="${key}" aria-pressed="${view.tab === key}">${label}</button>`).join('')}</div>${showMonth ? `<div class="pc-plan-month-nav"><button type="button" class="btn" data-wc-month-step="-1">‹</button><input class="input" type="month" min="1900-01" max="2199-12" value="${view.month}" data-wc-month><button type="button" class="btn" data-wc-month-step="1">›</button><button type="button" class="btn" data-wc-today>回到今天</button></div>` : ''}</div>${view.tab === 'workshop' ? `<div class="wc-filter-row"><span class="wc-filter-title">车辆筛选</span>${workshopVehiclePicker(state)}</div>` : view.tab === 'vehicle' ? `<div class="wc-filter-row"><label class="wc-filter-label">车辆筛选<select class="select" data-wc-filter><option value="">请选择车辆</option>${state.vehicleRepairs.map(vehicle => `<option value="${vehicle.id}" ${String(vehicle.id) === view.vehicleId ? 'selected' : ''}>${esc(vehicle.locomotiveNo)}</option>`).join('')}</select></label></div>` : ''}</div>`
+  return `<div class="wc-toolbar"><div class="wc-toolbar-top"><div class="tabs" aria-label="车间任务视图">${(demo?[['workshop','车间任务日历']]:[['workshop','车间任务日历'],['vehicle','单车日历'],['gantt','多车甘特图']]).map(([key,label]) => `<button type="button" class="tab ${view.tab === key ? 'active' : ''}" data-wc-tab="${key}" aria-pressed="${view.tab === key}">${label}</button>`).join('')}</div>${showMonth ? `<div class="pc-plan-month-nav"><button type="button" class="btn" data-wc-month-step="-1" aria-label="上个月">${actionIcon('previous',26)}</button><input class="input" type="month" min="1900-01" max="2199-12" value="${view.month}" data-wc-month><button type="button" class="btn" data-wc-month-step="1" aria-label="下个月">${actionIcon('next',26)}</button><button type="button" class="btn" data-wc-today>回到今天</button></div>` : ''}</div>${view.tab === 'workshop' ? `<div class="wc-filter-row"><span class="wc-filter-title">车辆筛选</span>${workshopVehiclePicker(state)}</div>` : view.tab === 'vehicle' ? `<div class="wc-filter-row"><label class="wc-filter-label">车辆筛选<select class="select" data-wc-filter><option value="">请选择车辆</option>${state.vehicleRepairs.map(vehicle => `<option value="${vehicle.id}" ${String(vehicle.id) === view.vehicleId ? 'selected' : ''}>${esc(vehicle.locomotiveNo)}</option>`).join('')}</select></label></div>` : ''}</div>`
 }
 
 function workshopVehiclePicker(state) {
@@ -101,7 +103,7 @@ function vehicleCalendarView(state) {
   const firstDay = rows.length ? dateKey(rows[0].plannedStartAt) : ''
   const lastDay = rows.length ? dateKey(new Date(Math.max(new Date(rows.at(-1).plannedStartAt).getTime(), new Date(rows.at(-1).plannedEndAt).getTime() - 1))) : ''
   const dayRows = tasksOnDay(rows, view.day)
-  return `<section class="card wc-single-card"><div class="pc-plan-panel-head"><div><h2>${esc(vehicle.locomotiveNo)} 单车任务日历</h2><p>与车间日历、多车甘特图使用相同排程数据。</p></div><div class="wc-jump-actions"><button type="button" class="btn btn-sm" data-wc-jump-day="${firstDay}" ${firstDay ? '' : 'disabled'}>跳到第一次任务</button><button type="button" class="btn btn-sm" data-wc-jump-day="${lastDay}" ${lastDay ? '' : 'disabled'}>跳到最后一次任务</button></div></div>${vehicleSummary(state, vehicle, rows)}${calendar(state, rows)}<div class="wc-single-day"><h3>${esc(view.day)} · ${dayRows.length}项任务</h3>${dayRows.map(row => taskButton(state,row)).join('') || '<p class="pc-plan-empty">当日暂无本车任务。</p>'}</div></section>`
+  return `<section class="card wc-single-card"><div class="pc-plan-panel-head"><div><h2>${esc(vehicle.locomotiveNo)} 单车任务日历</h2><p>与车间日历、多车甘特图使用相同排程数据。</p></div><div class="wc-jump-actions"><button type="button" class="btn btn-sm" data-wc-jump-day="${firstDay}" ${firstDay ? '' : 'disabled'}>跳到第一次任务</button><button type="button" class="btn btn-sm" data-wc-jump-day="${lastDay}" ${lastDay ? '' : 'disabled'}>跳到最后一次任务</button></div></div>${vehicleSummary(state, vehicle, rows)}${vehicleDetails(state,vehicle,rows,view.day)}${calendar(state, rows)}<div class="wc-single-day"><h3>${esc(view.day)} · ${dayRows.length}项任务</h3>${dayRows.map(row => taskButton(state,row)).join('') || '<p class="pc-plan-empty">当日暂无本车任务。</p>'}</div></section>`
 }
 
 function ganttVehiclePicker(state) {
@@ -126,7 +128,7 @@ function fixedDayGantt(state, rows, range) {
   const days = Math.max(1, Math.round((end - start) / DAY)), width = days * DAY_WIDTH
   const dates = Array.from({ length: days }, (_, index) => new Date(start + index * DAY))
   const sorted = [...rows].sort((a,b) => a.vehicleRepairId - b.vehicleRepairId || new Date(a.plannedStartAt) - new Date(b.plannedStartAt) || a.id - b.id)
-  if (!sorted.length) return '<div class="empty"><strong>当前日期范围没有所选车辆任务</strong><span>请选择车辆或调整日期范围。</span></div>'
+  if (!sorted.length) return emptyState('当前日期范围没有所选车辆任务','请选择车辆或调整日期范围。')
   return `<div class="wc-gantt-scroll" data-wc-gantt-scroll><div class="wc-fixed-gantt" style="--wc-timeline-width:${width}px"><div class="wc-gantt-head"><div class="wc-gantt-label">车辆 / 任务</div><div class="wc-gantt-days" style="width:${width}px">${dates.map(date => `<span>${String(date.getMonth()+1).padStart(2,'0')}/${String(date.getDate()).padStart(2,'0')}</span>`).join('')}</div></div>${sorted.map(row => {
     const left = Math.max(0, (new Date(row.plannedStartAt).getTime() - start) / DAY * DAY_WIDTH)
     const right = Math.min(width, (new Date(row.plannedEndAt).getTime() - start) / DAY * DAY_WIDTH)
@@ -155,10 +157,11 @@ function rerender(ctx, selector) {
 }
 
 export const workshopCalendarPage = {
-  render({ state }) {
+  render({ state, demo }) {
     ensureView(state)
+    if(demo)view.tab='workshop'
     const body = view.tab === 'vehicle' ? vehicleCalendarView(state) : view.tab === 'gantt' ? ganttView(state) : workshopView(state)
-    return `<div class="pc-planning wc-page" data-test="workshop-calendar">${pageHeader('车间每日任务日历','按日期汇总多辆机车的每日检修任务，并与单车日历、甘特图保持一致。')}<div class="notice notice-info wc-notice"><span>i</span><div>绿色为正式排程，橙色为待确认草稿，紫色为模拟预览。本阶段仅提供查询，不包含拖动和重新模拟。</div></div>${toolbar(state)}${body}</div>`
+    return `<div class="pc-planning wc-page" data-test="workshop-calendar">${pageHeader('车间每日任务日历',demo?'':'按日期汇总多辆机车的每日检修任务，并与单车日历、甘特图保持一致。',demo?'':'<a class="btn" href="#/scheduling/dashboard">日计划编排与调整</a><a class="btn" href="#/scheduling/workforce">单车查询与管控</a>')}${demo?'':`<div class="notice notice-info wc-notice"><span>i</span><div>绿色为正式排程，橙色为待确认草稿，紫色为模拟预览。本页用于查询；需要调整时请进入日计划编排页。</div></div>`}${toolbar(state,demo)}${body}</div>`
   },
   mount(ctx) {
     document.querySelectorAll('[data-wc-tab]').forEach(button => button.addEventListener('click', () => { view.tab = button.dataset.wcTab; if (view.tab === 'vehicle' && !view.vehicleId) view.vehicleId = String(ctx.state.selectedVehicleRepairId || ctx.state.vehicleRepairs[0]?.id || ''); rerender(ctx, `[data-wc-tab="${view.tab}"]`) }))

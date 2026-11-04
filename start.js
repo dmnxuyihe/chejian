@@ -20,6 +20,7 @@ for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { server.cl
 
 function openBrowser(url) {
   if (noOpen) return
+  if (process.argv.includes('--demo')) url += '/demo.html#/demo/calendar'
   const p = process.platform
   const command = p === 'win32' ? 'cmd' : p === 'darwin' ? 'open' : 'xdg-open'
   const args = p === 'win32' ? ['/c', 'start', '', url] : [url]

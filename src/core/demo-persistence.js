@@ -1,3 +1,4 @@
+import { milestoneError } from './vehicle-operations.js'
 import { createState } from './state.js'
 
 export const DEMO_STORAGE_KEY = 'rail-maintenance.pc1-demo.v1'
@@ -11,7 +12,7 @@ const positiveId = value => Number.isSafeInteger(value) && value > 0
 function cleanView(view) {
   if (!object(view)) return undefined
   const result = {}
-  for (const key of ['tab', 'month', 'vehicleFilter', 'day', 'ganttRange', 'dataToolsOpen']) {
+  for (const key of ['tab', 'month', 'vehicleFilter', 'day', 'ganttRange', 'dataToolsOpen', 'resourceVehicleIds', 'resourceListTab', 'importMonth', 'importType', 'annualYear']) {
     if (view[key] !== undefined) result[key] = view[key]
   }
   return result
@@ -24,6 +25,25 @@ function snapshotData(state) {
 
 function validateData(data) {
   if (!object(data)) throw new Error('备份中缺少演示数据')
+  for (const key of ['maintenanceRecords', 'pc1Dispatches']) if (data[key] === undefined) data[key] = []
+  // Upgrade pre-resource-list backups once; a deliberately empty new-format
+  // requirement list remains empty.
+  for (const [key, inventory, idField] of [['toolRequirements', 'tools', 'toolId'], ['materialRequirements', 'materials', 'materialId']]) {
+    if (data[key] !== undefined || !Array.isArray(data[inventory])) continue
+    const idsByDefaultId = new Map()
+    for (const requirement of defaults[key]) {
+      const source = defaults[inventory].find(row => row.id === requirement[idField])
+      if (!source || idsByDefaultId.has(source.id)) continue
+      let resource = data[inventory].find(row => row.name === source.name)
+      if (!resource) {
+        resource = { ...structuredClone(source), id: Math.max(0, ...data[inventory].map(row => Number(row.id) || 0)) + 1 }
+        data[inventory].push(resource)
+      }
+      idsByDefaultId.set(source.id, resource.id)
+    }
+    data[key] = defaults[key].filter(row => data.tasks?.some(task => task.id === row.taskId))
+      .map(row => ({ ...structuredClone(row), [idField]: idsByDefaultId.get(row[idField]) }))
+  }
   for (const [key, value] of Object.entries(defaults)) {
     if (Array.isArray(value)) {
       if (!Array.isArray(data[key]) || data[key].length > 50000 || data[key].some(row => !object(row))) throw new Error(`备份中的${key}数据格式无效`)
@@ -44,7 +64,13 @@ function validateData(data) {
       (row.plannedExitAt != null && (!validDate(row.plannedExitAt) || new Date(row.plannedExitAt) <= new Date(row.plannedEntryAt))) ||
       !Number.isFinite(row.priority) || (row.mileageKm != null && !Number.isFinite(row.mileageKm)) || typeof row.status !== 'string' || (row.currentVersionId != null && !versions.has(row.currentVersionId))) throw new Error('车辆计划日期、状态或排程版本无效')
   }
-  for (const row of data.scheduleVersions) if (!vehicles.has(row.vehicleRepairId) || !['DRAFT', 'PUBLISHED'].includes(row.status)) throw new Error('排程版本与车辆不匹配')
+  for (const vehicle of data.vehicleRepairs) {
+    if(['actualEntryAt','actualExitAt','onStandAt'].some(key=>vehicle[key]!=null && !validDate(vehicle[key]))) throw new Error('车辆实际时间无效')
+    const error=milestoneError(vehicle,vehicle.actualEntryAt??null,vehicle.onStandAt??null,data.schedules.filter(row=>row.vehicleRepairId===vehicle.id))
+    // Old snapshots may have task timestamps without reception data. Preserve those records.
+    if((vehicle.onStandAt || vehicle.lifecycleHistory?.length) && error) throw new Error(error)
+  }
+  for (const row of data.scheduleVersions) if (!vehicles.has(row.vehicleRepairId) || !['DRAFT', 'PUBLISHED', 'ARCHIVED'].includes(row.status)) throw new Error('排程版本与车辆不匹配')
   if (data.vehicleRepairs.some(row => row.currentVersionId != null && !data.scheduleVersions.some(v => v.id === row.currentVersionId && v.vehicleRepairId === row.id))) throw new Error('当前排程版本不属于该车辆')
   function validSchedule(row, preview = false) {
     return object(row) && positiveId(row.id) && vehicles.has(row.vehicleRepairId) && tasks.has(row.taskId) && stations.has(row.workstationId) &&
@@ -54,6 +80,23 @@ function validateData(data) {
   }
   if (!data.schedules.every(row => validSchedule(row))) throw new Error('任务的车辆、工序、工位或日期无效')
   const schedules = ids('schedules')
+  for (const key of ['maintenanceRecords', 'pc1Dispatches']) {
+    const values = data[key].map(row => row.id)
+    if (values.some(id => !positiveId(id)) || new Set(values).size !== values.length) throw new Error('检修记录或任务下发编号无效')
+  }
+  for (const row of data.maintenanceRecords) {
+    const schedule = data.schedules.find(item => item.id === row.scheduleTaskId && item.vehicleRepairId === row.vehicleRepairId && item.taskId === row.taskId)
+    if (!schedule || schedule.status !== 'COMPLETED' || !data.scheduleVersions.some(version => version.id === schedule.versionId && ['PUBLISHED','ARCHIVED'].includes(version.status)) || !validDate(row.submittedAt) || typeof row.submittedBy !== 'string' || typeof row.notes !== 'string' || !Array.isArray(row.measurements) || row.measurements.length > 100 || row.measurements.some(item => !object(item) || typeof item.name !== 'string' || !['string','number'].includes(typeof item.value) || typeof item.unit !== 'string') || !Array.isArray(row.attachments) || row.attachments.length > 12) throw new Error('已完成任务的检修记录关联或内容无效')
+    if (row.attachments.some(item => !object(item) || !/^[a-f0-9-]{36}$/.test(item.id) || item.url !== `/api/pc1/attachments/${item.id}` || typeof item.name !== 'string' || !['image/png','image/jpeg','image/webp','video/mp4','video/webm'].includes(item.mimeType) || !Number.isSafeInteger(item.bytes) || item.bytes <= 0)) throw new Error('检修记录的图片或视频格式无效')
+  }
+  for (const row of data.pc1Dispatches) {
+    if (!vehicles.has(row.vehicleRepairId) || !data.scheduleVersions.some(version => version.id === row.versionId && version.vehicleRepairId === row.vehicleRepairId) || !data.teams.some(team => team.id === row.teamId) || !validDate(row.publishedAt) || !Array.isArray(row.scheduleTaskIds) || row.scheduleTaskIds.some(id => !data.schedules.some(task => task.id === id && task.vehicleRepairId === row.vehicleRepairId && task.versionId === row.versionId)) || !Array.isArray(row.employeeIds) || row.employeeIds.some(id => !data.employees.some(employee => employee.id === id && employee.teamId === row.teamId)) || ['tools','materials','components'].some(key => !Array.isArray(row[key]))) throw new Error('班组任务下发的车辆、版本或资源关联无效')
+  }
+  for (const [key, collection, idField] of [['toolRequirements', 'tools', 'toolId'], ['materialRequirements', 'materials', 'materialId']]) {
+    if (data[key].some(row => !tasks.has(row.taskId) || !data[collection].some(resource => resource.id === row[idField]) || !Number.isFinite(row.quantity) || row.quantity <= 0 || (key === 'toolRequirements' && !Number.isInteger(row.quantity)))) throw new Error('工具或物料需求存在无效关联或数量')
+    const pairs = data[key].map(row => `${row.taskId}:${row[idField]}`)
+    if (new Set(pairs).size !== pairs.length) throw new Error('同一任务的工具或物料需求重复')
+  }
   for (const [key, resourceKey, field] of [['employeeAssignments', 'employees', 'employeeId'], ['equipmentAssignments', 'equipment', 'equipmentId'], ['componentAssignments', 'componentInstances', 'componentInstanceId']]) {
     const resourceIds = ids(resourceKey)
     if (data[key].some(row => !schedules.has(row.scheduleTaskId) || !resourceIds.has(row[field]))) throw new Error('任务资源分配存在无效关联')
@@ -64,11 +107,20 @@ function validateData(data) {
     if (!object(view) || !['monthly', 'vehicle', 'workshop'].includes(view.tab) || !/^\d{4}-(0[1-9]|1[0-2])$/.test(view.month) || view.month < '1900-01' || view.month > '2199-12' ||
       typeof view.vehicleFilter !== 'string' || !/^\d*$/.test(view.vehicleFilter) || typeof view.day !== 'string' || (view.day && !/^\d{4}-\d{2}-\d{2}$/.test(view.day))) throw new Error('日历视图设置无效')
     if (view.ganttRange && (!object(view.ganttRange) || typeof view.ganttRange.key !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(view.ganttRange.start) || !/^\d{4}-\d{2}-\d{2}$/.test(view.ganttRange.end) || view.ganttRange.start > view.ganttRange.end)) throw new Error('甘特图日期范围无效')
+    if (view.resourceVehicleIds !== undefined && (!Array.isArray(view.resourceVehicleIds) || view.resourceVehicleIds.length > data.vehicleRepairs.length || view.resourceVehicleIds.some(id => !vehicles.has(id)) || new Set(view.resourceVehicleIds).size !== view.resourceVehicleIds.length)) throw new Error('资源核对的车辆选择无效')
+    if (view.resourceListTab !== undefined && !['people', 'tools', 'materials'].includes(view.resourceListTab)) throw new Error('资源清单分类无效')
   }
   if (data.pc1SchedulePreview !== undefined) {
     const preview = data.pc1SchedulePreview
     if (!object(preview) || !Array.isArray(preview.vehicleRepairIds) || !Array.isArray(preview.schedules) || preview.vehicleRepairIds.some(id => !vehicles.has(id)) || preview.schedules.length > 50000 ||
       preview.schedules.some(row => !validSchedule(row, true) || !preview.vehicleRepairIds.includes(row.vehicleRepairId)) || new Set(preview.schedules.map(s => s.id)).size !== preview.schedules.length) throw new Error('模拟排程备份存在无效关联')
+    if (preview.employeeAssignments !== undefined && (!Array.isArray(preview.employeeAssignments) || preview.employeeAssignments.length > 50000 || preview.employeeAssignments.some(row => !object(row) || !preview.schedules.some(schedule => schedule.id === row.scheduleTaskId && (row.vehicleRepairId == null || schedule.vehicleRepairId === row.vehicleRepairId)) || !data.employees.some(employee => employee.id === row.employeeId)) || new Set(preview.employeeAssignments.map(row => `${row.scheduleTaskId}:${row.employeeId}`)).size !== preview.employeeAssignments.length)) throw new Error('模拟人员安排与作业任务不匹配或存在重复')
+    if (preview.schemaVersion === 2) {
+      if (!validDate(preview.deadline) || typeof preview.sourceSignature !== 'string' || preview.sourceSignature.length > 6 * 1024 * 1024 || typeof preview.needsRecompute !== 'boolean' || !Array.isArray(preview.generationIssues) || !Array.isArray(preview.issues) || [...preview.generationIssues,...preview.issues].some(item => typeof item !== 'string')) throw new Error('模拟排程的截止时间或校验信息无效')
+      for (const [key, collection, field] of [['equipmentAssignments','equipment','equipmentId'],['componentAssignments','componentInstances','componentInstanceId']]) {
+        if (!Array.isArray(preview[key]) || preview[key].length > 50000 || preview[key].some(row => !object(row) || !preview.schedules.some(task => task.id === row.scheduleTaskId) || !data[collection].some(item => item.id === row[field]))) throw new Error('模拟设备或配件安排关联无效')
+      }
+    }
   }
   return data
 }

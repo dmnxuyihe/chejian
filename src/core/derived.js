@@ -60,6 +60,8 @@ export function employeeTasks(state, employeeId, vehicleRepairId = null) {
   return state.employeeAssignments
     .filter(a => {
       if (a.employeeId !== Number(employeeId) || a.status === 'CANCELLED') return false
+      const current = state.schedules.find(s => s.id === a.scheduleTaskId)
+      if (!current || !state.vehicleRepairs.some(vehicle => vehicle.id === current.vehicleRepairId && vehicle.currentVersionId === current.versionId)) return false
       if (vehicleRepairId == null) return true
       return state.schedules.find(s=>s.id===a.scheduleTaskId)?.vehicleRepairId === Number(vehicleRepairId)
     })

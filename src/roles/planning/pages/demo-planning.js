@@ -8,6 +8,7 @@ import { calendarGrid, kindLabel, monthlyEvents, taskEvents, taskTable } from '.
 import { renderGantt, renderGanttToolbar, rowsInGanttRange } from '../../../shared/gantt.js'
 import { parseDemoSnapshot } from '../../../core/demo-persistence.js'
 import { createPlanTemplate } from '../../../shared/plan-template.js'
+import { renderVehicleResources, renderResourcePreparation, mountResourceLists } from '../../../shared/resource-lists.js'
 
 function downloadBackup(text) {
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json;charset=utf-8' }))
@@ -79,7 +80,7 @@ function tasksCalendar(state, view, rows, title) {
     ${day ? `<div class="pc-day-detail" aria-live="polite"><h3>${day} · ${tasksOnDay(rows, day).length}项任务</h3>${taskTable(state, tasksOnDay(rows, day))}</div>` : '<p class="pc-help">选择一个日期查看任务明细。</p>'}</section>`
 }
 
-function vehicleView(state, view) {
+function vehicleView(state, view, readOnly = false) {
   const vehicle = state.vehicleRepairs.find(v => v.id === state.selectedVehicleRepairId) || state.vehicleRepairs[0]
   if (!vehicle) return `<section class="card">${emptyState('暂无车辆计划', '先导入月度计划或新增检修计划。')}</section>`
   const rows = planningTasks(state, vehicle.id)
@@ -95,7 +96,7 @@ function vehicleView(state, view) {
     <div class="pc-progress"><progress value="${completed}" max="${Math.max(rows.length, 1)}" aria-label="任务完成进度"></progress><span>${rows.length ? Math.round(completed / rows.length * 100) : 0}%</span></div>
     ${rows.length ? '' : '<p class="pc-help">本车尚无排程结果。完成模拟排程后，日历和甘特图会显示本车任务。</p>'}</section>
     ${tasksCalendar(state, view, rows, `${vehicle.locomotiveNo} 每日检修任务`)}
-    <section class="card"><div class="card-title-row"><h2 class="card-title">${esc(vehicle.locomotiveNo)} 甘特图</h2><span class="pc-help">可单独调整日期范围；点击任务查看详情</span></div>${renderGanttToolbar({ range, count: visible.length }).replace('data-gantt-range="start"', 'data-gantt-range="start" aria-label="甘特图开始日期"').replace('data-gantt-range="end"', 'data-gantt-range="end" aria-label="甘特图结束日期"').replace('恢复全部范围', '恢复本月任务范围')}<div class="pc-gantt-scroll">${renderGantt({ rows: visible, range, labelFor: s => taskOf(state, s.taskId)?.name || '任务', metaFor: s => `${kindLabel[s.planKind]} · ${fmtDateTime(s.plannedStartAt)} → ${fmtDateTime(s.plannedEndAt)}`, barClassFor: s => `${taskOf(state, s.taskId)?.process === '构架' ? 'frame' : ''} ${s.isLocked ? 'locked' : ''}`, attributesFor: s => `data-pc-task="${s.id}" data-pc-kind="${s.planKind}"`, emptyText: '当前日期范围暂无排程任务' })}</div><div data-pc-task-detail aria-live="polite"></div></section>`
+    <section class="card"><div class="card-title-row"><h2 class="card-title">${esc(vehicle.locomotiveNo)} 甘特图</h2><span class="pc-help">可单独调整日期范围；点击任务查看详情</span></div>${renderGanttToolbar({ range, count: visible.length }).replace('data-gantt-range="start"', 'data-gantt-range="start" aria-label="甘特图开始日期"').replace('data-gantt-range="end"', 'data-gantt-range="end" aria-label="甘特图结束日期"').replace('恢复全部范围', '恢复本月任务范围')}<div class="pc-gantt-scroll">${renderGantt({ rows: visible, range, labelFor: s => taskOf(state, s.taskId)?.name || '任务', metaFor: s => `${kindLabel[s.planKind]} · ${fmtDateTime(s.plannedStartAt)} → ${fmtDateTime(s.plannedEndAt)}`, barClassFor: s => `${taskOf(state, s.taskId)?.process === '构架' ? 'frame' : ''} ${s.isLocked ? 'locked' : ''}`, attributesFor: s => `data-pc-task="${s.id}" data-pc-kind="${s.planKind}"`, emptyText: '当前日期范围暂无排程任务' })}</div><div data-pc-task-detail aria-live="polite"></div></section>${renderVehicleResources(state, vehicle.id, readOnly)}`
 }
 
 function workshop(state, view) {
@@ -117,11 +118,12 @@ export const demoPlanningPage = {
       <div class="pc-file-status" role="status" data-pc-file-status>${planningReadOnly ? '' : esc(view.importStatus || '')}</div>
       ${planningReadOnly ? `<p class="pc-help" data-pc-query-status role="status">${esc(demoPersistence?.status.message || '')}</p>` : dataTools(view, demoPersistence)}
       <div class="grid grid-4 pc-stats">${statCard('本月关联车辆', inMonth.length, '入出段或本月有任务')}${statCard('本月入段', state.vehicleRepairs.filter(v => dateKey(v.plannedEntryAt).startsWith(view.month)).length, '计划入段', 'metric-indigo')}${statCard('本月已排出段', state.vehicleRepairs.filter(v => dateKey(confirmedExit(state, v.id)).startsWith(view.month)).length, '依据正式排程', 'metric-green')}${statCard('本月任务', planningTasks(state).filter(s => new Date(s.plannedStartAt) < new Date(`${shiftMonth(view.month, 1)}-01T00:00:00`) && new Date(s.plannedEndAt) > new Date(`${view.month}-01T00:00:00`)).length, '含模拟与待确认结果')}</div>
-      ${toolbar(state, view)}${view.tab === 'vehicle' ? vehicleView(state, view) : view.tab === 'workshop' ? workshop(state, view) : monthly(state, view, planningReadOnly)}</div>`
+      ${toolbar(state, view)}${view.tab === 'vehicle' ? vehicleView(state, view, planningReadOnly) : view.tab === 'workshop' ? workshop(state, view) : monthly(state, view, planningReadOnly)}${view.tab === 'monthly' ? renderResourcePreparation(state, view, planningReadOnly) : ''}</div>`
   },
   mount(ctx) {
     if (!ctx.planningReadOnly) plansCrudPage.mount(ctx)
     const view = ensurePlanningView(ctx.state)
+    mountResourceLists(ctx, view, ctx.planningReadOnly)
     const persistence = ctx.demoPersistence
     document.querySelector('[data-pc-xlsx-template]')?.addEventListener('click', async e => {
       const button = e.currentTarget; button.disabled = true

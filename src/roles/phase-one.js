@@ -6,16 +6,21 @@ import { workerRole } from './worker/index.js'
 import { qualityRole } from './quality/index.js'
 import { technicalRole } from './technical/index.js'
 import { escapeHtml } from '../core/ui.js'
+import { vehicleCenterPage } from './scheduling/pages/vehicle-center.js'
+import { pageHeader } from '../shared/templates.js'
+import { workspaceArt, artKind } from '../shared/workspace-art.js'
+import { pageScope } from '../shared/page-scope.js'
 
-const plannedPage = (roleLabel, section, label) => ({
+const plannedPage = (roleLabel, section, label, scopeLabels) => ({
   implementationStatus: 'planned',
   render() {
     return `<section class="planned-page" data-test="planned-page">
-      <div class="page-head"><div><div class="eyebrow">${escapeHtml(section)}</div><h1>${escapeHtml(label)}</h1><p>${escapeHtml(roleLabel)} · 第一阶段导航入口</p></div><span class="badge badge-amber">待开发</span></div>
-      <div class="card planned-card">
-        <div class="planned-mark">待</div>
-        <div><h2>业务功能待开发</h2><p>本页已按正式导航规划建立路由。业务操作、数据保存和状态流转尚未实现，将在对应角色的后续开发阶段完成。</p></div>
-      </div>
+      ${pageHeader(label,section,'<span class="badge badge-amber">待开发</span>')}
+      <section class="card planned-card planned-illustrated">
+        <div class="planned-copy"><span class="planned-section-label">${escapeHtml(section)}</span><h2>业务功能待开发</h2><p>本页业务操作、数据保存和状态流转尚未实现，将在后续开发阶段完成。</p></div>
+        <div class="planned-drawing">${workspaceArt(artKind(label))}</div>
+      </section>
+      ${pageScope(section,scopeLabels,label)}
     </section>`
   },
 })
@@ -31,7 +36,7 @@ const specs = [
     ['审批中心',['月度检修计划审核审批','整车临修审核审批','配件临修审核审批','物料需求计划审核']],
   ]],
   ['scheduling','生产调度人员','调',[
-    ['整车智能排程',['整车日计划编排与调整','日计划发布与任务下发','整车日计划/修程查询','生产日历与节假日配置']],
+    ['整车智能排程',['整车日计划编排与调整','日计划发布与任务下发','整车日计划/修程查询','车间每日任务日历']],
     ['配件智能排程',['配件日计划编排与查询','配件上车计划与计划查询']],
     ['产线调度与跟踪',['工序工位自动匹配','计划下发与执行跟踪']],
     ['调移车作业',['调车计划与通知']],
@@ -107,7 +112,7 @@ const specs = [
     ['服务回访',['满意度调查与回访']],
   ]],
   ['workshop-management','车间管理人员','管',[
-    ['生产进度监控',['机车与配件进度','视频监控']],
+    ['生产进度监控',['机车检修进度监控','视频监控']],
     ['停时分析',['整车与工序停时分析','配件停时分析']],
     ['成本分析',['单车成本分析','库存成本分析']],
     ['数字化驾驶舱',['数字孪生产线电子看板','计划执行统计分析']],
@@ -122,7 +127,8 @@ const specs = [
 const legacy = { 'system-admin':systemAdminRole, planning:planningRole, scheduling:schedulingRole, foreman:foremanRole, worker:workerRole, quality:qualityRole, technical:technicalRole }
 const implementations = {
   planning:{'月度计划同步与编制':'plans','月度计划日历查询':'g2-p2'},
-  scheduling:{'整车日计划编排与调整':'dashboard','日计划发布与任务下发':'gantt','整车日计划/修程查询':'workforce','生产日历与节假日配置':'workshop-calendar','工序工位自动匹配':'resources','计划下发与执行跟踪':'exceptions'},
+  scheduling:{'整车日计划编排与调整':'dashboard','日计划发布与任务下发':'gantt','整车日计划/修程查询':'workforce','车间每日任务日历':'workshop-calendar','计划下发与执行跟踪':'exceptions'},
+  'workshop-management':{'机车检修进度监控':'control'},
   foreman:{'整车派工与人员调整':'team-tasks'},
   worker:{'整车检修作业':'my-tasks'},
   inspector:{'整车检修专检':'inspections'},
@@ -134,8 +140,15 @@ const implementations = {
   'equipment-management':{'设备台账管理':'resources'},
 }
 
-const aliases = { inspector:qualityRole, acceptance:qualityRole, 'component-management':systemAdminRole, 'material-warehouse':systemAdminRole, 'tool-management':systemAdminRole, 'equipment-management':systemAdminRole }
+const aliases = { inspector:qualityRole, acceptance:qualityRole, 'component-management':systemAdminRole, 'material-warehouse':systemAdminRole, 'tool-management':systemAdminRole, 'equipment-management':systemAdminRole, 'workshop-management':{pages:{control:vehicleCenterPage}} }
 const pageId = (sectionIndex, pageIndex) => `g${sectionIndex + 1}-p${pageIndex + 1}`
+// These existing utility pages support the requirement pages without changing
+// the original requirement names or gX-pY routes.
+const adminResources = [
+  { id:'dashboard', label:'基础资源总览', section:'基础资源', status:'implemented', utility:true },
+  { id:'resources', label:'基础资源管理', section:'基础资源', status:'implemented', utility:true },
+  { id:'components', label:'配件台账', section:'基础资源', status:'implemented', utility:true },
+]
 
 export const phaseOneRoles = Object.fromEntries(specs.map(([id,label,short,groups]) => {
   const source = legacy[id] || aliases[id]
@@ -144,12 +157,13 @@ export const phaseOneRoles = Object.fromEntries(specs.map(([id,label,short,group
   groups.forEach(([section,labels],sectionIndex)=>labels.forEach((pageLabel,pageIndex)=>{
     const implementedId = implementations[id]?.[pageLabel]
     const idForPage = implementedId || pageId(sectionIndex,pageIndex)
-    if (!implementedId) pages[idForPage] = plannedPage(label,section,pageLabel)
+    if (!implementedId) pages[idForPage] = plannedPage(label,section,pageLabel,labels)
     nav.push({id:idForPage,label:pageLabel,section,icon:implementedId ? 'task' : 'list',status:implementedId ? 'implemented' : 'planned'})
   }))
-  const defaultPage = nav[0].id
+  if (id === 'system-admin') nav.unshift(...adminResources)
+  const defaultPage = id === 'system-admin' ? 'resources' : nav[0].id
   return [id,{ id,label,short,group:groups[0][0],defaultPage,nav,pages }]
 }))
 
-export const roleCatalog = specs.map(([id,label,short,groups])=>({id,label,short,description:`${groups.map(([name])=>name).join('、')}`}))
+export const roleCatalog = specs.map(([id,label,short,groups])=>({id,label,short,description:`${id==='system-admin'?'基础资源、':''}${groups.map(([name])=>name).join('、')}`}))
 

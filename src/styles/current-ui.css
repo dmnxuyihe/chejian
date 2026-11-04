@@ -1,0 +1,608 @@
+/*
+ * Shared presentation for all function workspaces.
+ *
+ * Function workspaces and the standalone PC1 demo deliberately use the same
+ * visual language: slate surfaces, a restrained teal accent, thin borders,
+ * compact controls, and the line-art page headers.  This file only targets
+ * the main application through data-current-ui; demo-specific layout rules
+ * remain isolated in demo.css.
+ */
+
+html[data-current-ui],
+html[data-current-ui] body {
+  --page: #f3f5f6;
+  --surface: #ffffff;
+  --surface-2: #f6f8f9;
+  --surface-3: #f0f4f5;
+  --line: #dce3e7;
+  --control-line: #b9c6cc;
+  --text: #23343e;
+  --muted: #5c707c;
+  --muted-2: #657983;
+  --brand: #216c61;
+  --brand-2: #2d8275;
+  --brand-soft: #e8f2ef;
+  --primary: #286b60;
+  --primary-hover: #20594f;
+  --radius-control: 8px;
+  --radius-panel: 10px;
+  background: var(--page);
+  color: var(--text);
+}
+
+html.dark[data-current-ui],
+html.dark[data-current-ui] body {
+  --page: #202a33;
+  --surface: #28343f;
+  --surface-2: #2c3a45;
+  --surface-3: #23303a;
+  --line: #40505c;
+  --control-line: #738792;
+  --text: #e7edf2;
+  --muted: #b1bec7;
+  --muted-2: #a5b5bf;
+  --brand: #a0d4c8;
+  --brand-2: #b8eae3;
+  --brand-soft: #2b4545;
+  --primary: #2b6b63;
+  --primary-hover: #347d73;
+  background: var(--page);
+  color: var(--text);
+}
+
+/* Header: the same quiet, centered navigation language as the current demo. */
+html[data-current-ui] .workspace-shell .topbar {
+  height: 64px;
+  padding: 0 max(24px, calc((100vw - 1440px) / 2 + 30px));
+  gap: 32px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+html[data-current-ui] .workspace-shell .workspace-brand {
+  gap: 10px;
+  color: var(--text);
+}
+html[data-current-ui] .workspace-shell .workspace-brand > svg {
+  width: 30px;
+  height: 30px;
+  color: var(--brand);
+}
+html[data-current-ui] .workspace-shell .workspace-brand strong {
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: .02em;
+}
+html[data-current-ui] .workspace-shell .workspace-brand > span {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 10px;
+}
+html[data-current-ui] .workspace-shell .workspace-nav {
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+}
+html[data-current-ui] .workspace-shell .workspace-nav a {
+  min-height: 42px;
+  gap: 8px;
+  padding: 0 14px;
+  border-radius: 9px;
+  color: var(--muted);
+  font-size: 14px;
+  transition: background-color .15s ease, color .15s ease;
+}
+html[data-current-ui] .workspace-shell .workspace-nav a:hover {
+  background: var(--surface-2);
+  color: var(--brand);
+}
+html[data-current-ui] .workspace-shell .workspace-nav a.active {
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: 600;
+}
+html[data-current-ui] .workspace-shell .workspace-nav a.active::after {
+  display: none;
+}
+html[data-current-ui] .workspace-shell .topbar-actions .btn {
+  min-height: 36px;
+  border-color: var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--muted);
+}
+html[data-current-ui] .workspace-shell .topbar-actions .btn:hover {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+/* Secondary function navigation shares the workspace surfaces. */
+html[data-current-ui] .workspace-shell > .sidebar {
+  width: 252px;
+  top: var(--header-height,64px);
+  background: var(--surface);
+  border-right-color: var(--line);
+  box-shadow: 12px 0 34px #162a3214;
+}
+html[data-current-ui] .workspace-shell .brand {
+  height: 68px;
+  padding: 0 18px;
+  border-bottom-color: var(--line);
+}
+html[data-current-ui] .workspace-shell .brand-logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--primary);
+  color: #fff;
+}
+html[data-current-ui] .workspace-shell .brand-title {
+  color: var(--text);
+  font-size: 15px;
+  background: none;
+}
+html[data-current-ui] .workspace-shell .brand-subtitle {
+  color: var(--muted-2);
+}
+html[data-current-ui] .workspace-shell .nav {
+  padding: 18px 14px;
+}
+html[data-current-ui] .workspace-shell .nav-item {
+  min-height: 38px;
+  padding: 8px 11px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+html[data-current-ui] .workspace-shell .nav-item:hover {
+  background: var(--surface-2);
+  color: var(--brand);
+}
+html[data-current-ui] .workspace-shell .nav-item.active {
+  background: var(--brand-soft);
+  color: var(--brand);
+  box-shadow: none;
+}
+html[data-current-ui] .workspace-shell .nav-item.active::before {
+  width: 3px;
+  background: var(--brand);
+}
+html[data-current-ui] .workspace-shell .nav-icon {
+  background: transparent;
+  color: currentColor;
+}
+html[data-current-ui] .workspace-shell .sidebar-footer {
+  border-top-color: var(--line);
+}
+html[data-current-ui] .workspace-shell .role-chip {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+html[data-current-ui] .workspace-shell .role-avatar {
+  border-radius: 8px;
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+html[data-current-ui] .workspace-shell .nav-scrim {
+  background: #12202a66;
+}
+
+/* Content and line-art page headers. */
+html[data-current-ui] .workspace-shell .content {
+  max-width: 1480px;
+  padding: 18px max(24px, calc((100vw - 1440px) / 2 + 30px)) 36px;
+}
+html[data-current-ui] .workspace-shell .workspace-location {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+html[data-current-ui] .workspace-shell .workspace-location a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--brand);
+}
+html[data-current-ui] .workspace-shell .page-header {
+  align-items: flex-start;
+  min-height: 56px;
+  margin-bottom: 16px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+html[data-current-ui] .workspace-shell .page-heading {
+  min-width: 0;
+  gap: 16px;
+}
+html[data-current-ui] .workspace-shell .page-art-mark {
+  display: grid;
+  width: 48px;
+  height: 44px;
+  flex: 0 0 48px;
+  place-items: center;
+  color: var(--brand);
+}
+html[data-current-ui] .workspace-shell .page-art-mark .workspace-art {
+  width: 48px;
+  height: 40px;
+  opacity: .76;
+}
+html[data-current-ui] .workspace-shell .page-header h1 {
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -.025em;
+}
+html[data-current-ui] .workspace-shell .page-desc {
+  max-width: 780px;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.8;
+}
+html[data-current-ui] .workspace-shell .page-actions {
+  align-items: flex-start;
+}
+
+/* Cards, controls and tables share one component rhythm across every role. */
+html[data-current-ui] .workspace-shell .card,
+html[data-current-ui] .workspace-shell .stat-card,
+html[data-current-ui] .workspace-shell .planned-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: none;
+}
+html[data-current-ui] .workspace-shell .card {
+  padding: 21px;
+}
+html[data-current-ui] .workspace-shell .stat-card {
+  padding: 20px;
+}
+html[data-current-ui] .workspace-shell .stat-card:hover {
+  transform: none;
+  box-shadow: none;
+}
+html[data-current-ui] .workspace-shell .card-title {
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+}
+html[data-current-ui] .workspace-shell .card-subtitle,
+html[data-current-ui] .workspace-shell .stat-help {
+  color: var(--muted);
+}
+html[data-current-ui] .workspace-shell .btn {
+  min-height: 40px;
+  padding: 9px 15px;
+  border: 1px solid var(--control-line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: none;
+}
+html[data-current-ui] .workspace-shell .btn:hover {
+  transform: none;
+  border-color: var(--brand);
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+html[data-current-ui] .workspace-shell .btn-primary {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+html[data-current-ui] .workspace-shell .btn-primary:hover {
+  border-color: var(--primary-hover);
+  background: var(--primary-hover);
+  color: #fff;
+}
+html[data-current-ui] .workspace-shell .btn-quiet {
+  border-color: transparent;
+  background: transparent;
+  color: var(--brand);
+}
+html[data-current-ui] .workspace-shell .input,
+html[data-current-ui] .workspace-shell .select,
+html[data-current-ui] .workspace-shell .textarea {
+  min-height: 40px;
+  border: 1px solid var(--control-line);
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: none;
+}
+html[data-current-ui] .workspace-shell .input:focus,
+html[data-current-ui] .workspace-shell .select:focus,
+html[data-current-ui] .workspace-shell .textarea:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 15%, transparent);
+}
+html[data-current-ui] .workspace-shell th {
+  background: var(--surface-2);
+  color: var(--muted);
+  border-color: var(--line);
+  font-size: 11px;
+  font-weight: 600;
+}
+html[data-current-ui] .workspace-shell td {
+  color: var(--text);
+  border-color: var(--line);
+}
+html[data-current-ui] .workspace-shell tbody tr:hover {
+  background: var(--surface-2);
+}
+html[data-current-ui] .workspace-shell .tabs {
+  background: transparent;
+  border-bottom-color: var(--line);
+}
+html[data-current-ui] .workspace-shell .tab.active {
+  color: var(--brand);
+  border-bottom-color: var(--brand);
+  background: transparent;
+}
+
+/* Role selection is an entry screen in the same system, not a separate theme. */
+html[data-current-ui] .role-select-page {
+  min-height: 100vh;
+  background: var(--page);
+}
+html[data-current-ui] .role-select-page .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 15;
+}
+html[data-current-ui] .role-select-page .role-select-shell {
+  max-width: 1440px;
+  padding: 42px max(24px, calc((100vw - 1320px) / 2)) 70px;
+}
+html[data-current-ui] .role-select-page .entry-intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 30px;
+  min-height: 180px;
+  margin-bottom: 34px;
+  padding: 28px 0 30px;
+  border-bottom: 1px solid var(--line);
+}
+html[data-current-ui] .role-select-page .entry-eyebrow {
+  color: var(--brand);
+  font-size: 12px;
+  letter-spacing: .08em;
+}
+html[data-current-ui] .role-select-page .entry-intro h1 {
+  margin-top: 10px;
+  color: var(--text);
+  font-size: 34px;
+  font-weight: 650;
+  letter-spacing: -.03em;
+}
+html[data-current-ui] .role-select-page .entry-intro .page-desc {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+html[data-current-ui] .role-select-page .entry-overview {
+  width: min(430px, 42%);
+  color: var(--brand);
+  opacity: .75;
+}
+html[data-current-ui] .role-select-page .entry-workshop-art {
+  width: 100%;
+  max-height: 150px;
+}
+html[data-current-ui] .role-select-page .entry-art-caption {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+}
+html[data-current-ui] .role-select-page .role-section {
+  margin-top: 30px;
+}
+html[data-current-ui] .role-select-page .role-section-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+html[data-current-ui] .role-select-page .role-section-heading > span {
+  color: var(--brand);
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+html[data-current-ui] .role-select-page .role-section-heading h2 {
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 600;
+}
+html[data-current-ui] .role-select-page .role-section-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+html[data-current-ui] .role-select-page .role-grid {
+  gap: 14px;
+}
+html[data-current-ui] .role-select-page .role-card {
+  min-height: 168px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: none;
+}
+html[data-current-ui] .role-select-page .role-card:hover {
+  border-color: var(--brand);
+  background: var(--surface-2);
+}
+html[data-current-ui] .role-select-page .role-card-icon {
+  width: 34px;
+  height: 34px;
+  margin-bottom: 13px;
+  border-radius: 8px;
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+html[data-current-ui] .role-select-page .role-card-title {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+html[data-current-ui] .role-select-page .role-card-description {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+html[data-current-ui] .role-select-page .role-entry {
+  color: var(--brand);
+  font-size: 11px;
+}
+html[data-current-ui] .role-select-page .role-select-note {
+  margin-top: 24px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+html[data-current-ui] .modal-backdrop {
+  background: #182b435c;
+  backdrop-filter: blur(3px);
+}
+html[data-current-ui] .modal {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 25px 100px #10203035;
+}
+html[data-current-ui] .modal-head,
+html[data-current-ui] .modal-actions {
+  border-color: var(--line);
+  background: var(--surface);
+}
+
+@media (max-width: 900px) {
+  html[data-current-ui] .workspace-shell .topbar {
+    padding: 0 22px;
+    gap: 18px;
+  }
+  html[data-current-ui] .workspace-shell .workspace-nav {
+    gap: 3px;
+  }
+  html[data-current-ui] .workspace-shell .workspace-nav a {
+    padding: 0 10px;
+    font-size: 12px;
+  }
+  html[data-current-ui] .workspace-shell .content {
+    padding: 28px 22px 40px;
+  }
+  html[data-current-ui] .role-select-page .role-select-shell {
+    padding: 32px 22px 56px;
+  }
+  html[data-current-ui] .role-select-page .role-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  html[data-current-ui] .workspace-shell .topbar {
+    height: 116px;
+    padding: 12px 16px 0;
+    gap: 0;
+  }
+  html[data-current-ui] .workspace-shell .workspace-nav {
+    height: 48px;
+    gap: 2px;
+    margin-top: 5px;
+  }
+  html[data-current-ui] .workspace-shell .workspace-nav a {
+    min-height: 37px;
+    padding: 0 8px;
+    font-size: 11px;
+  }
+  html[data-current-ui] .workspace-shell > .sidebar {
+    top: 116px;
+  }
+  html[data-current-ui] .workspace-shell .content {
+    padding: 22px 16px 34px;
+  }
+  html[data-current-ui] .workspace-shell .page-header {
+    min-height: 0;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+  }
+  html[data-current-ui] .workspace-shell .page-heading {
+    width: 100%;
+  }
+  html[data-current-ui] .workspace-shell .page-art-mark {
+    width: 40px;
+    flex-basis: 40px;
+  }
+  html[data-current-ui] .workspace-shell .page-art-mark .workspace-art {
+    width: 40px;
+  }
+  html[data-current-ui] .workspace-shell .page-header h1 {
+    font-size: 22px;
+  }
+  html[data-current-ui] .workspace-shell .page-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  html[data-current-ui] .role-select-page .topbar {
+    height: 74px;
+    padding: 0 16px;
+  }
+  html[data-current-ui] .role-select-page .role-select-shell {
+    padding: 22px 16px 44px;
+  }
+  html[data-current-ui] .role-select-page .entry-intro {
+    display: block;
+    min-height: 0;
+    margin-bottom: 26px;
+    padding: 22px 0 24px;
+  }
+  html[data-current-ui] .role-select-page .entry-intro h1 {
+    font-size: 29px;
+  }
+  html[data-current-ui] .role-select-page .entry-overview {
+    width: 100%;
+    margin-top: 18px;
+  }
+  html[data-current-ui] .role-select-page .role-section-heading {
+    flex-wrap: wrap;
+    gap: 7px 10px;
+  }
+  html[data-current-ui] .role-select-page .role-section-heading p {
+    flex-basis: 100%;
+    padding-left: 22px;
+  }
+  html[data-current-ui] .role-select-page .role-grid {
+    grid-template-columns: 1fr;
+  }
+  html[data-current-ui] .role-select-page .role-card {
+    min-height: 142px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-current-ui] .workspace-shell * {
+    transition: none !important;
+  }
+}

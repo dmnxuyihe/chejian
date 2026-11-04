@@ -2,6 +2,7 @@ import { teams, employees, employeeLeaves, workstations, equipment, componentTyp
 import { tools, materials, spareParts } from '../data/simple-resources.js'
 import { repairPrograms, locomotiveModels, tasks, dependencies, teamRequirements, equipmentRequirements, componentRequirements, taskStepHints } from '../data/process.js'
 import { vehicleRepairs, scheduleVersions, schedules, initialEmployeeAssignments, initialEquipmentAssignments, initialComponentAssignments, initialExceptions } from '../data/schedule.js'
+import { toolRequirements, materialRequirements } from '../data/task-supplies.js'
 
 const clone = (v) => structuredClone(v)
 
@@ -22,6 +23,8 @@ export function createState() {
     tools: clone(tools),
     materials: clone(materials),
     spareParts: clone(spareParts),
+    toolRequirements: clone(toolRequirements),
+    materialRequirements: clone(materialRequirements),
     componentTypes: clone(componentTypes),
     componentInstances: clone(componentInstances),
     workCalendar: clone(workCalendar),
@@ -30,9 +33,7 @@ export function createState() {
     tasks: clone(tasks),
     dependencies: clone(dependencies),
     teamRequirements: clone(teamRequirements),
-    toolRequirements: [],
     partRequirements: [],
-    materialRequirements: [],
     equipmentRequirements: clone(equipmentRequirements),
     componentRequirements: clone(componentRequirements),
     taskStepHints: clone(taskStepHints),
@@ -46,6 +47,8 @@ export function createState() {
     approvalRecords: [],
     componentMovements: [],
     qualityRecords: [],
+    maintenanceRecords: [],
+    pc1Dispatches: [],
     activityLog: [
       { id: 1, time: '2026-09-23 19:30', type: '系统', text: '初始化构架与轮驱排程数据' },
       { id: 2, time: '2026-09-23 19:30', type: '配件', text: '补充配件类型、实例和排程占用演示数据' },

@@ -10,3 +10,6 @@ export const materials = [
 ].map(([name,unit,quantity],i)=>({ id:i+1, code:`MT${String(i+1).padStart(3,'0')}`, name, unit, quantity, status:'AVAILABLE', location:'物料区' }))
 
 export const spareParts = []
+
+// 原流程明确列出的 O 形圈与既有 O 型密封圈分别保留，避免擅自合并规格。
+materials.push({ id: 37, code: 'MT037', name: 'O形圈', unit: '件', quantity: 50, status: 'AVAILABLE', location: '物料区' })

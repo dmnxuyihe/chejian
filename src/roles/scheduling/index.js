@@ -1,6 +1,6 @@
-import { dashboardPage } from './pages/dashboard.js'
-import { ganttPage } from './pages/gantt.js'
-import { workforcePage } from './pages/workforce.js'
+import { pc1PlanningPage as dashboardPage } from './pages/pc1-planning.js'
+import { pc1DispatchPage as ganttPage } from './pages/pc1-dispatch.js'
+import { vehicleCenterPage as workforcePage } from './pages/vehicle-center.js'
 import { resourcesPage } from './pages/resources.js'
 import { exceptionsPage } from './pages/exceptions.js'
 import { workshopCalendarPage } from './pages/workshop-calendar.js'
@@ -13,5 +13,5 @@ export const schedulingRole = {
     {id:'resources',label:'工位与资源',icon:'资'},
     {id:'exceptions',label:'异常约束',icon:'!'},
   ],
-  pages:{dashboard:dashboardPage,gantt:ganttPage,workforce:workforcePage,resources:resourcesPage,exceptions:exceptionsPage,'workshop-calendar':workshopCalendarPage}
+  pages:{dashboard:dashboardPage,gantt:ganttPage,workforce:workforcePage,vehicle:workforcePage,control:workforcePage,resources:resourcesPage,exceptions:workforcePage,'legacy-exceptions':exceptionsPage,'workshop-calendar':workshopCalendarPage}
 }

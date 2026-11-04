@@ -1,5 +1,10 @@
+import { planMaintenanceActions, mountPlanMaintenance } from '../../../shared/plan-maintenance.js'
 import { pageHeader } from '../../../shared/templates.js'
 import { escapeHtml } from '../../../core/ui.js'
+import { renderVehicleResources, renderResourcePreparation, mountResourceLists } from '../../../shared/resource-lists.js'
+import { icon, actionIcon } from '../../../shared/icons.js'
+import { workspaceArt } from '../../../shared/workspace-art.js'
+import { locomotiveDrawing, planFlowDrawing } from '../../../shared/rail-visuals.js'
 
 const esc = escapeHtml
 const today = () => {
@@ -17,6 +22,10 @@ const monthEnd = month => {
   return `${y}-${pad(m)}-${pad(new Date(Date.UTC(y, m, 0)).getUTCDate())}`
 }
 const view = { month: today().slice(0, 7), day: today(), importType: 'MONTHLY', filter: { modelId: '', programId: '', locomotiveNo: '' }, loading: true, loadedMode: '', rows: [], planRows: [], lookups: { models: [], programs: [] }, busy: false, preview: null, previewFilter: 'all', detail: null, error: '', result: null, manualOpen: false }
+let viewRestored = false
+function rememberView(ctx) {
+  Object.assign(ctx.state.planningView, { month:view.month, day:view.day, importMonth:view.importMonth || view.month, importType:view.importType, annualYear:view.annualYear || view.month.slice(0,4) })
+}
 
 async function api(path, options = {}) {
   const response = await fetch(path, { cache: 'no-store', ...options, headers: { ...(options.body ? { 'Content-Type': 'application/json' } : {}), ...(options.headers || {}) } })
@@ -74,16 +83,16 @@ function vehicleCard(vehicle, event) {
   </button>`
 }
 
-function dayPanel() {
+function dayPanel(demo=false) {
   if (!view.day) return '<div class="pc-plan-empty">选择日期查看当日计划。</div>'
   const events = entriesForDay(view.day)
   const entries = events.filter(event => event.type === 'entry')
   const exits = events.filter(event => event.type === 'exit')
   const vehicleCount = new Set(events.map(event => event.vehicle.id)).size
   return `<div class="pc-plan-day-panel">
-    <div class="pc-plan-day-summary"><div><span>当日事件</span><strong>${events.length}</strong></div><div><span>涉及检修</span><strong>${vehicleCount}</strong></div></div>
+    ${demo?'':`<div class="pc-plan-day-summary"><div><span>当日事件</span><strong>${events.length}</strong></div><div><span>涉及检修</span><strong>${vehicleCount}</strong></div></div>`}
     ${[['计划入段', entries], ['预计出段', exits]].map(([title, rows]) => `<section class="pc-plan-event-group"><h3>${title}<span>${rows.length}</span></h3>${rows.map(event => vehicleCard(event.vehicle, event)).join('') || `<p class="pc-plan-empty">当日暂无${title}事件</p>`}</section>`).join('')}
-    <p class="pc-plan-hint">预计出段仅依据该次检修已关联的 CURRENT 正式排程版本；未排程或草稿不显示。</p>
+    <p class="pc-plan-hint">预计出段仅依据该次检修已确认的正式排程版本；未排程或草稿不显示。</p>
   </div>`
 }
 
@@ -111,7 +120,7 @@ function previewPanel() {
   </section>`
 }
 
-function detailDrawer() {
+function detailDrawer(state, demo=false) {
   const vehicle = view.detail
   if (!vehicle && view.detailLoading) return `<div class="pc-plan-drawer-backdrop"><aside class="pc-plan-drawer" role="dialog" aria-modal="true" aria-labelledby="pc-vehicle-detail-title"><div class="pc-plan-drawer-head"><div><span>车辆检修详情</span><h2 id="pc-vehicle-detail-title">正在加载…</h2></div></div><p role="status">正在从数据库加载车辆详情…</p></aside></div>`
   if (!vehicle) return ''
@@ -119,23 +128,28 @@ function detailDrawer() {
   const source = vehicle.planSource === 'ANNUAL' ? '年度计划' : vehicle.planSource === 'MONTHLY' ? '月度计划' : value(vehicle.planSource)
   return `<div class="pc-plan-drawer-backdrop" data-close-drawer><aside class="pc-plan-drawer" role="dialog" aria-modal="true" aria-labelledby="pc-vehicle-detail-title"><div class="pc-plan-drawer-head"><div><span>车辆检修详情</span><h2 id="pc-vehicle-detail-title">${esc(vehicle.locomotiveNo)}</h2></div><button type="button" class="btn" data-close-detail aria-label="关闭车辆详情">关闭</button></div><dl>
     <div><dt>机型</dt><dd>${value(vehicle.modelName)}</dd></div><div><dt>修程</dt><dd>${value(vehicle.repairProgramName)}</dd></div><div><dt>修次</dt><dd>${vehicle.repairSequence == null ? '未填写' : esc(vehicle.repairSequence)}</dd></div><div><dt>状态</dt><dd>${esc(statusLabel(vehicle))}</dd></div><div><dt>配属局</dt><dd>${value(vehicle.ownerBureau)}</dd></div><div><dt>配属段</dt><dd>${value(vehicle.ownerDepot)}</dd></div><div><dt>累计走行公里</dt><dd>${vehicle.mileageKm == null ? '未填写' : `${esc(vehicle.mileageKm)} km`}</dd></div><div><dt>计划入段</dt><dd>${value(vehicle.entryDate)}</dd></div><div><dt>预计出段</dt><dd>${vehicle.confirmedExitDate ? esc(vehicle.confirmedExitDate) : vehicle.versionStatus === 'CURRENT' ? '暂无预计出段' : '尚未正式排程'}</dd></div><div><dt>计划来源</dt><dd>${source}</dd></div><div class="is-wide"><dt>备注</dt><dd>${value(vehicle.remark)}</dd></div>
-    </dl></aside></div>`
+    </dl>${demo?'':planMaintenanceActions(state,vehicle.id)}<a class="btn btn-primary" href="#/scheduling/workforce" data-pc1-open-single="${vehicle.id}">查看本车日历、甘特图与检修记录</a>${renderVehicleResources(state, vehicle.id, true)}</aside></div>`
 }
 
-function toolbar() {
-  return `<div class="pc-plan-toolbar"><div class="pc-plan-month-nav"><button type="button" class="btn" data-month-step="-1" aria-label="上个月">‹</button><input class="input" type="month" min="1900-01" max="2199-12" value="${view.month}" data-calendar-month><button type="button" class="btn" data-month-step="1" aria-label="下个月">›</button><button type="button" class="btn" data-today>回到今天</button></div><div class="pc-plan-filterbar"><label>机型<select class="select" data-filter-model><option value="">全部机型</option>${view.lookups.models.map(model => `<option value="${model.id}" ${String(view.filter.modelId) === String(model.id) ? 'selected' : ''}>${esc(model.name)}</option>`).join('')}</select></label><label>修程<select class="select" data-filter-program><option value="">全部修程</option>${view.lookups.programs.filter(program => !view.filter.modelId || String(program.modelId) === String(view.filter.modelId)).map(program => `<option value="${program.id}" ${String(view.filter.programId) === String(program.id) ? 'selected' : ''}>${esc(program.name)}</option>`).join('')}</select></label><label>车辆编号<input class="input" type="search" maxlength="64" value="${esc(view.filter.locomotiveNo)}" placeholder="输入编号筛选" data-filter-locomotive></label></div></div>`
+function toolbar(demo=false) {
+  return `<div class="pc-plan-toolbar"><div class="pc-plan-month-nav"><button type="button" class="btn" data-month-step="-1" aria-label="上个月">${actionIcon('previous',26)}</button><input class="input" type="month" min="1900-01" max="2199-12" value="${view.month}" data-calendar-month><button type="button" class="btn" data-month-step="1" aria-label="下个月">${actionIcon('next',26)}</button><button type="button" class="btn" data-today>回到今天</button></div>${demo?'':`<div class="pc-plan-filterbar"><label>机型<select class="select" data-filter-model><option value="">全部机型</option>${view.lookups.models.map(model => `<option value="${model.id}" ${String(view.filter.modelId) === String(model.id) ? 'selected' : ''}>${esc(model.name)}</option>`).join('')}</select></label><label>修程<select class="select" data-filter-program><option value="">全部修程</option>${view.lookups.programs.filter(program => !view.filter.modelId || String(program.modelId) === String(view.filter.modelId)).map(program => `<option value="${program.id}" ${String(view.filter.programId) === String(program.id) ? 'selected' : ''}>${esc(program.name)}</option>`).join('')}</select></label><label>车辆编号<input class="input" type="search" maxlength="64" value="${esc(view.filter.locomotiveNo)}" placeholder="输入编号筛选" data-filter-locomotive></label></div>`}</div>`
 }
 
-function mainCalendar() {
+function mainCalendar(state,demo=false) {
   if (view.loading) return '<section class="card pc-plan-loading" role="status">正在从数据库加载检修计划…</section>'
   if (view.error) return `<section class="card pc-plan-load-error" role="alert"><strong>数据库查询失败</strong><p>${esc(view.error)}</p><button type="button" class="btn" data-retry>重试</button></section>`
-  return `${view.rows.length ? '' : '<p class="pc-plan-empty-notice" role="status">当前日历范围内暂无匹配的检修计划。</p>'}<section class="pc-plan-layout"><div class="card pc-plan-calendar-card"><div class="pc-plan-panel-head"><div><h2>${esc(view.month)} 检修计划</h2><p>计划入段与 CURRENT 正式排程预计出段</p></div><div class="pc-plan-legend"><span><i class="is-entry"></i>蓝色：计划入段</span><span><i class="is-exit"></i>绿色：预计出段</span></div></div>${calendarHtml()}</div><aside class="card pc-plan-day-card"><div class="pc-plan-panel-head"><div><h2>当日详情</h2><p>${esc(view.day || '选择日期')}</p></div></div>${dayPanel()}</aside></section>`
+  return `${view.rows.length ? '' : '<p class="pc-plan-empty-notice" role="status">当前日历范围内暂无匹配的检修计划。</p>'}<section class="pc-plan-layout"><div class="card pc-plan-calendar-card"><div class="pc-plan-panel-head"><div><h2>${esc(view.month)} 检修计划</h2><p>计划入段与正式排程预计出段</p></div><div class="pc-plan-legend"><span><i class="is-entry"></i>蓝色：计划入段</span><span><i class="is-exit"></i>绿色：预计出段</span></div></div>${calendarHtml()}</div><aside class="card pc-plan-day-card"><div class="pc-plan-panel-head"><div><h2>当日详情</h2><p>${esc(view.day || '选择日期')}</p></div></div>${dayPanel(demo)}</aside></section>${demo?'':`<details class="pc1-resource-disclosure"><summary>资源准备与演示资料</summary>${renderResourcePreparation(state, state.planningView)}</details>`}`
 }
 
 function plansList() {
   if (view.loading) return '<section class="card pc-plan-loading" role="status">正在从数据库加载计划…</section>'
   if (view.error) return `<section class="card pc-plan-load-error" role="alert"><strong>数据库查询失败</strong><p>${esc(view.error)}</p><button type="button" class="btn" data-retry>重试</button></section>`
-  return `<section class="card pc-plan-records"><div class="pc-plan-panel-head"><div><h2>计划记录</h2><p>${esc(view.importMonth || view.month)} 入段计划，共${view.planRows.length}条</p></div></div><div class="pc-plan-preview-table"><table><thead><tr><th>机车编号</th><th>机型</th><th>修程</th><th>修次</th><th>计划入段</th><th>来源</th><th>状态</th><th>配属局 / 段</th></tr></thead><tbody>${view.planRows.map(row => `<tr><td>${esc(row.locomotiveNo)}</td><td>${esc(row.modelName)}</td><td>${esc(row.repairProgramName)}</td><td>${esc(row.repairSequence ?? '未填写')}</td><td>${esc(row.entryDate || '未填写')}</td><td>${row.planSource === 'ANNUAL' ? '年度计划' : row.planSource === 'MONTHLY' ? '月度计划' : esc(row.planSource || '未填写')}</td><td>${esc(statusLabel(row))}</td><td>${esc([row.ownerBureau,row.ownerDepot].filter(Boolean).join(' / ') || '未填写')}</td></tr>`).join('') || '<tr><td colspan="8" class="pc-plan-empty">当前期间暂无计划记录。</td></tr>'}</tbody></table></div></section>`
+  return `<section class="card pc-plan-records"><div class="plan-table-toolbar"><div><h2>本期检修计划 <span class="count-label">${view.planRows.length}</span></h2><p>按计划入段日期查询</p></div>${periodControl()}</div>
+    <div class="plan-record-table table-wrap"><table><thead><tr><th>机车</th><th>修程 / 修次</th><th>计划入段</th><th>排程状态</th><th class="cell-end">操作</th></tr></thead><tbody>${view.planRows.map(row => `<tr><td><div class="plan-car-identity">${locomotiveDrawing()}<div><strong class="plan-car-no">${esc(row.locomotiveNo)}</strong><small class="table-subline">${esc(row.modelName)}<span>·</span>${row.planSource === 'ANNUAL' ? '年度计划' : '月度计划'}</small></div></div></td><td>${esc(row.repairProgramName)}<small class="table-subline">${row.repairSequence == null ? '修次未填写' : `第 ${esc(row.repairSequence)} 次`}</small></td><td class="date-cell">${esc(row.entryDate || '未填写')}</td><td><span class="plan-status ${row.status === 'SCHEDULED' || row.versionStatus === 'CURRENT' ? 'is-scheduled' : ''}">${esc(statusLabel(row))}</span></td><td class="cell-end"><button type="button" class="text-action" data-plan-detail="${row.id}">查看详情 ${icon('arrow',14)}</button></td></tr>`).join('') || '<tr><td colspan="5" class="empty"><strong>这个月份还没有检修计划</strong><span>点击右上角“导入计划文件”，开始添加。</span></td></tr>'}</tbody></table></div><div class="plan-table-footer"><span>共 ${view.planRows.length} 条计划</span><a href="#/planning/g2-p2">在月度日历中查看 ${icon('arrow',14)}</a></div></section>`
+}
+
+function importGuide() {
+  return `<aside class="plan-guide" aria-label="导入指引"><div class="guide-heading"><h2>${icon('file',20)}从计划到检修</h2><p>简单三步，完成检修计划导入。</p></div><div class="plan-guide-art">${workspaceArt('plan')}</div><ol class="guide-steps"><li><b>1</b><div><strong>填写模板</strong><p>填入车号、机型、修程和入段日期。</p></div></li><li class="${view.preview ? 'is-current' : ''}"><b>2</b><div><strong>上传并检查</strong><p>系统逐行校验，先预览，再入库。</p></div></li><li><b>3</b><div><strong>确认导入</strong><p>通过的计划保存后，即可选车排程。</p></div></li></ol><div class="guide-download"><span>还没有模板？</span><a class="template-download" href="/api/planning/import/template.xlsx">${icon('file',17)}下载 Excel 模板 ${icon('arrow',15)}</a><details class="guide-other"><summary>CSV 模板与填写说明</summary><div><a href="/api/planning/import/template.csv">下载 CSV 模板</a><a href="/api/planning/import/example.md" target="_blank" rel="noreferrer">查看填写示例 ↗</a></div></details></div><p class="guide-caption">支持 .xlsx、.xls、.csv<br>单个文件不超过 5 MB，最多 1,000 条。</p></aside>`
 }
 
 function manualForm() {
@@ -157,7 +171,7 @@ function setMessage(message, kind = 'info') {
   view.message = message ? { text: message, kind } : null
 }
 
-async function loadData(mode = 'calendar') {
+async function loadData(mode = 'calendar', revision = null) {
   view.loading = true; view.error = ''
   try {
     const lookups = await api('/api/planning/lookups')
@@ -174,25 +188,39 @@ async function loadData(mode = 'calendar') {
       const result = await api(`/api/planning/plans?${params}`)
       view.planRows = result.vehicles
     }
+    if(view.detail){
+      const id=view.detail.id
+      const detail=await api(`/api/planning/vehicles/${encodeURIComponent(id)}`)
+      if(view.detail?.id===id)view.detail=detail
+    }
   } catch (error) { view.error = error.message }
-  finally { view.loading = false; view.loadedMode = mode }
+  finally { view.loading = false; view.loadedMode = mode; view.loadedRevision = revision }
 }
 
 function render(ctx, mode = 'calendar') {
   const isCalendar = mode === 'calendar'
-  const actions = isCalendar
-    ? ''
-    : `<div class="pc-plan-actions"><div class="pc-plan-import-controls"><label>导入类型<select class="select" data-import-type><option value="MONTHLY" ${view.importType === 'MONTHLY' ? 'selected' : ''}>月度计划</option><option value="ANNUAL" ${view.importType === 'ANNUAL' ? 'selected' : ''}>年度计划</option></select></label>${periodControl()}<button type="button" class="btn btn-primary" data-start-import ${view.busy ? 'disabled' : ''}>导入计划文件</button><button type="button" class="btn" data-open-manual>手动新建</button></div><div class="pc-plan-template-controls"><a class="btn" href="/api/planning/import/template.xlsx">下载 XLSX 模板</a><a class="btn" href="/api/planning/import/template.csv">下载 CSV 模板</a><a class="btn" href="/api/planning/import/example.md" target="_blank" rel="noreferrer">查看导入示例</a></div></div>`
-  const title = isCalendar ? '月度计划日历查询' : '月度计划同步与编制'
-  const description = isCalendar ? '按月查询计划入段与正式排程预计出段，查看当日计划及车辆详情。' : '导入或手动新建年度、月度检修计划，校验后确认新增；本页展示导入期间的计划记录。'
-  return `<div class="pc-planning pc-plan-page">${pageHeader(title, description, actions)}
+  const planningView = ctx.state.planningView ||= { tab: 'monthly', month: view.month, vehicleFilter: '', day: view.day }
+  if (!viewRestored) {
+    viewRestored = true
+    for (const key of ['month','day','importMonth','annualYear']) if (planningView[key]) view[key] = planningView[key]
+    if (['MONTHLY','ANNUAL'].includes(planningView.importType)) view.importType = planningView.importType
+  }
+  if(ctx.demo){view.importType='MONTHLY';view.filter={modelId:'',programId:'',locomotiveNo:''}}
+  rememberView(ctx)
+  const actions = isCalendar || view.preview || view.manualOpen
+    ? (isCalendar && ctx.demo ? `<a class="btn btn-primary" href="#/demo/plans">${actionIcon('upload')}导入月度计划</a>` : '')
+    : `<div class="plan-import-actions">${ctx.demo?'':`<label class="import-type-label"><span class="sr-only">导入类型</span><select class="select" data-import-type aria-label="导入类型"><option value="MONTHLY" ${view.importType === 'MONTHLY' ? 'selected' : ''}>月度计划</option><option value="ANNUAL" ${view.importType === 'ANNUAL' ? 'selected' : ''}>年度计划</option></select></label>`}<button type="button" class="btn btn-primary" data-start-import ${view.busy ? 'disabled' : ''}>${actionIcon('upload')}导入计划文件</button>${ctx.demo?`<a class="text-action" href="/api/planning/import/template.xlsx">${actionIcon('download',24)}下载模板</a>`:''}${ctx.demo?'':'<button type="button" class="btn btn-quiet" data-open-manual>手动新建</button>'}</div>`
+  const title = '检修计划'
+  const description = isCalendar ? '按日期查看车辆入段与排程后的预计出段。' : '从月度计划开始，安排每一辆机车的检修。'
+  return `<div class="pc-planning pc-plan-page">${pageHeader(title, ctx.demo?'':description, actions)}
     <input type="file" accept=".xlsx,.xls,.csv" data-plan-file hidden aria-label="选择年度或月度计划文件">
     <p class="pc-plan-message ${view.message?.kind === 'error' ? 'is-error' : view.message?.kind === 'success' ? 'is-success' : ''}" role="status">${esc(view.message?.text || '')}</p>
     ${view.result ? `<section class="card pc-plan-result" role="status"><strong>导入已提交</strong><span>新增${view.result.imported}条，未导入${view.result.notImported}条。</span><button type="button" class="btn btn-sm" data-dismiss-result>关闭结果</button></section>` : ''}
-    ${isCalendar ? `${toolbar()}${mainCalendar()}${detailDrawer()}` : `${manualForm()}${previewPanel()}${plansList()}`}</div>`
+    <nav class="plan-view-tabs" aria-label="计划查看方式"><a href="#/planning/plans" class="${!isCalendar ? 'active' : ''}" ${!isCalendar ? 'aria-current="page"' : ''}>计划列表</a><a href="#/planning/g2-p2" class="${isCalendar ? 'active' : ''}" ${isCalendar ? 'aria-current="page"' : ''}>月度日历</a></nav>
+    ${isCalendar ? `${toolbar(ctx.demo)}${mainCalendar(ctx.state,ctx.demo)}${detailDrawer(ctx.state,ctx.demo)}` : `<div class="plan-workspace"><div class="plan-workspace-main">${view.preview ? previewPanel() : view.manualOpen ? manualForm() : plansList()}${detailDrawer(ctx.state,ctx.demo)}</div>${ctx.demo?'':importGuide()}</div>${!ctx.demo && !view.preview && !view.manualOpen ? planFlowDrawing() : ''}${ctx.demo?'':`<details class="pc1-resource-disclosure"><summary>资源准备与演示资料</summary>${renderResourcePreparation(ctx.state, planningView)}</details>`}`}</div>`
 }
 
-async function refresh(ctx, mode = 'calendar') { await loadData(mode); ctx.rerender(false) }
+async function refresh(ctx, mode = 'calendar') { rememberView(ctx); ctx.demoPersistence?.save(); await loadData(mode,ctx.demoPersistence?.revision); ctx.rerender(false) }
 
 function selectCalendarDay(ctx, day) {
   view.day = day
@@ -228,6 +256,10 @@ async function openVehicle(ctx, id, day) {
 
 function renderMount(ctx, mode = 'calendar') {
   const isCalendar = mode === 'calendar'
+  mountPlanMaintenance(ctx,async()=>{view.detail=null;await refresh(ctx,mode)})
+  document.querySelector('[data-pc1-open-single]')?.addEventListener('click', event => { ctx.state.selectedVehicleRepairId = Number(event.currentTarget.dataset.pc1OpenSingle) })
+  mountResourceLists(ctx, ctx.state.planningView ||= { tab: 'monthly', month: view.month, vehicleFilter: '', day: view.day }, false)
+  document.querySelectorAll('[data-plan-detail]').forEach(button => button.addEventListener('click', () => openVehicle(ctx, button.dataset.planDetail)))
   document.querySelector('[data-open-manual]')?.addEventListener('click', () => { view.manualOpen = true; ctx.rerender(false) })
   document.querySelector('[data-close-manual]')?.addEventListener('click', () => { view.manualOpen = false; ctx.rerender(false) })
   document.querySelector('[data-manual-model]')?.addEventListener('change', event => {
@@ -256,10 +288,9 @@ function renderMount(ctx, mode = 'calendar') {
     view.importType = event.target.value
     if (view.importType === 'ANNUAL') view.annualYear ||= view.month.slice(0, 4)
     else view.importMonth ||= view.month
-    ctx.rerender(false)
+    rememberView(ctx); ctx.demoPersistence?.save()
+    refresh(ctx, 'plans')
   })
-  document.querySelector('[data-annual-year]')?.addEventListener('change', event => { view.annualYear = event.target.value })
-  document.querySelector('[data-import-month]')?.addEventListener('change', event => { view.importMonth = event.target.value })
   document.querySelector('[data-start-import]')?.addEventListener('click', () => document.querySelector('[data-plan-file]').click())
   document.querySelector('[data-plan-file]')?.addEventListener('change', async event => {
     const input = event.currentTarget
@@ -279,9 +310,7 @@ function renderMount(ctx, mode = 'calendar') {
   })
   document.querySelector('[data-import-month]')?.addEventListener('change', event => { if (/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)) { view.importMonth = event.target.value; refresh(ctx, 'plans') } })
   document.querySelector('[data-annual-year]')?.addEventListener('change', event => { if (/^\d{4}$/.test(event.target.value)) { view.annualYear = event.target.value; view.importMonth = `${event.target.value}-01`; refresh(ctx, 'plans') } })
-  if (!isCalendar) {
-    document.querySelector('[data-retry]')?.addEventListener('click', () => refresh(ctx, 'plans'))
-  }
+  document.querySelector('[data-retry]')?.addEventListener('click', () => refresh(ctx, mode))
   document.querySelector('[data-calendar-month]')?.addEventListener('change', event => {
     if (!event.target.validity.valid || !/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)) return
     view.month = event.target.value; view.day = `${view.month}-01`; refresh(ctx, 'calendar')
@@ -333,10 +362,10 @@ function renderMount(ctx, mode = 'calendar') {
       if (result.changed) {
         view.preview = { ...result.preview, filename: view.preview.filename }; setMessage('数据库出现新的计划冲突；数据未写入，请复核更新后的预览。', 'error'); ctx.rerender(false); return
       }
-      view.result = result; view.preview = null; setMessage('导入已提交到数据库。', 'success')
+      view.result = result; view.preview = null; view.manualOpen = false; setMessage('导入已提交到数据库。', 'success')
       const target = view.importType === 'ANNUAL' ? `${view.annualYear || view.month.slice(0, 4)}-01` : (view.importMonth || view.month)
       view.month = target
-      await Promise.all([ctx.demoPersistence?.load?.(), loadData(mode)])
+      await Promise.all([ctx.demoPersistence?.load?.(), loadData(mode,ctx.demoPersistence?.revision)])
       ctx.rerender(false)
     } catch (error) { setMessage(`提交失败：${error.message}。请核对数据库状态后再重试。`, 'error'); ctx.rerender(false) }
     finally { view.busy = false; ctx.rerender(false) }
@@ -349,9 +378,10 @@ function page(mode) {
   render: ctx => render(ctx, mode),
   mount(ctx) {
     renderMount(ctx, mode)
-    if ((view.loading || view.loadedMode !== mode) && !view.loadingRequest) {
+    const revision=ctx.demoPersistence?.revision ?? null
+    if ((view.loading || view.loadedMode !== mode || revision!==view.loadedRevision) && !view.loadingRequest) {
       view.loadingRequest = true
-      loadData(mode).then(() => { view.loadingRequest = false; ctx.rerender(false) })
+      loadData(mode,revision).then(() => { view.loadingRequest = false; ctx.rerender(false) })
     }
     if (view.preview) {
       const id = view.preview.id

@@ -1,0 +1,48 @@
+"""Function sidebar browser regression. Requires enabled browser control."""
+import os, sys, json
+from pathlib import Path
+ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT/'test-artifacts/python-deps'))
+from playwright.sync_api import sync_playwright, expect
+BASE=os.environ.get('PC1_TEST_BASE_URL','http://127.0.0.1:5193').rstrip('/')
+OUT=ROOT/'test-artifacts/navigation-drawer';OUT.mkdir(parents=True,exist_ok=True)
+with sync_playwright() as p:
+    browser=p.chromium.launch(channel='msedge',headless=True)
+    page=browser.new_page(viewport={'width':1440,'height':1000},reduced_motion='reduce')
+    errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+    page.goto(BASE+'/#/functions')
+    expect(page.locator('[data-function-entry="monthly-calendar"]')).to_be_visible()
+    toggle=page.locator('[data-function-nav-toggle]')
+    expect(toggle).to_have_attribute('aria-expanded','true')
+    toggle.click();expect(toggle).to_have_attribute('aria-expanded','false')
+    assert page.locator('.sidebar').evaluate('(el)=>el.inert')
+    toggle.click();expect(toggle).to_have_attribute('aria-expanded','true')
+    page.locator('[data-nav-group="operations"]>summary').click()
+    page.locator('.sidebar a').filter(has_text='任务派工').click()
+    expect(page.locator('[data-function-entry="assignment"]')).to_be_visible()
+    expect(toggle).to_have_attribute('aria-expanded','true')
+    page.set_viewport_size({'width':390,'height':900})
+    expect(toggle).to_have_attribute('aria-expanded','false')
+    toggle.click()
+    expect(page.locator('.sidebar')).to_have_attribute('aria-modal','true')
+    assert page.locator('.main-column').evaluate('(el)=>el.inert')
+    expect(page.locator('.sidebar [aria-current="page"]')).to_be_focused()
+    page.keyboard.press('Escape')
+    expect(toggle).to_be_focused()
+    expect(toggle).to_have_attribute('aria-expanded','false')
+    assert not page.locator('.main-column').evaluate('(el)=>el.inert')
+    toggle.click()
+    page.locator('[data-nav-group="operations"]>summary').click()
+    page.keyboard.press('Escape')
+    toggle.click()
+    expect(page.locator('[data-nav-group="planning"]>summary')).to_be_focused()
+    page.locator('[data-nav-group="planning"]>summary').click()
+    target=page.locator('.sidebar a').filter(has_text='任务下发')
+    target.focus();page.keyboard.press('Enter')
+    expect(page.locator('[data-function-entry="dispatch"]')).to_be_visible()
+    expect(toggle).to_have_attribute('aria-expanded','false')
+    page.screenshot(path=str(OUT/'mobile-dispatch.png'))
+    assert not errors,errors
+    report={'passed':True,'checks':['desktop collapse and reopen','function group navigation','mobile dialog and inert','active link focus','Escape focus return','keyboard link activation closes drawer'],'pageErrors':errors}
+    (OUT/'report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+    print(json.dumps(report,ensure_ascii=False));browser.close()

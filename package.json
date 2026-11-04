@@ -15,9 +15,12 @@
     "test:workshop-calendar": "node tests/workshop_calendar.mjs",
     "db:seed-workshop-calendar": "node scripts/seed-workshop-calendar.mjs",
     "test:planning-import": "node tests/planning_import.mjs",
+    "test:pc1": "node tests/pc1_simulation.mjs && node tests/pc1_database.mjs",
+    "test:pc1:operations": "node tests/pc1_operations.mjs",
+    "test:pc1:stress": "node tests/pc1_stress_500.mjs",
     "test:persistence": "node tests/demo_persistence.mjs && node tests/database_persistence.mjs",
     "test:postgres": "node tests/postgres_integration.mjs",
-    "test:postgres:ui": "node tests/postgres_ui.mjs",
+    "test:postgres:ui": "node tests/postgres_current_ui.mjs",
     "test:planning:ui": "node tests/planning_page_ui.mjs",
     "start": "node start.js",
     "serve": "node start.js --no-open",
@@ -26,6 +29,7 @@
     "test:acceptance": "node tests/v01_acceptance.mjs",
     "test:logic": "node tests/schedule_logic.mjs",
     "test:roles": "node tests/phase_one_roles.mjs",
+    "test:navigation": "node tests/function_navigation.mjs",
     "test": "node tests/phase_one_roles.mjs && node tests/schedule_logic.mjs && node tests/v01_acceptance.mjs && node tests/planning_calendar.mjs && node tests/demo_persistence.mjs && node tests/database_persistence.mjs && node tests/ui_smoke.mjs"
   },
   "dependencies": {

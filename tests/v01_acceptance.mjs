@@ -44,6 +44,7 @@ phase('系统管理员', () => {
   for (const [collection, data] of Object.entries(samples)) {
     const created = createResource(state, collection, data)
     assert.equal(created.ok, true, `${collection} 新增失败`)
+    if (collection === 'materials') assert.equal(created.row.unit, '件', '未填写计量单位时使用默认单位')
     const edited = updateResource(state, collection, created.id, collection==='teams'?{name:'验收班组改'}:{status:data.status || 'AVAILABLE'})
     assert.equal(edited.ok, true, `${collection} 编辑失败`)
     assert.equal(deleteResource(state, collection, created.id).ok, true, `${collection} 合法删除失败`)
@@ -169,7 +170,7 @@ phase('工班长/组长', () => {
 })
 
 phase('作业人员', () => {
-  const state=createState(); runAutoSchedule(state,1)
+  const state=createState(); runAutoSchedule(state,1); assert.equal(publishSchedule(state),true)
   const schedule=vehicleRows(state,1)[0]
   const owner=activeAssignments(state,schedule.id)[0].employeeId
   const outsider=state.employees.find(e=>!activeAssignments(state,schedule.id).some(a=>a.employeeId===e.id)).id
@@ -185,7 +186,7 @@ phase('作业人员', () => {
 })
 
 phase('质量人员', () => {
-  const state=createState(); runAutoSchedule(state,1)
+  const state=createState(); runAutoSchedule(state,1); assert.equal(publishSchedule(state),true)
   const first=vehicleRows(state,1)[0], second=vehicleRows(state,1)[1]
   const firstOwner=activeAssignments(state,first.id)[0].employeeId
   startTask(state,first.id,firstOwner); completeTask(state,first.id,firstOwner)

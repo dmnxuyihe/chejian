@@ -29,6 +29,31 @@ export function createHandler(database) {
       if (url.pathname.startsWith('/api/')) {
         if (url.pathname === '/api/config' && req.method === 'GET') return json(res, 200, { storage: database ? 'postgresql' : 'local' })
         if (!database) return json(res, 503, { message: '当前为显式本地演示模式，未启用数据库' })
+        if (url.pathname === '/api/pc1/records' && req.method === 'POST') {
+          if (req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return json(res, 403, { message: '拒绝跨站写入' })
+          return json(res, 200, await database.submitMaintenanceRecord(await body(req)))
+        }
+        if (url.pathname === '/api/pc1/records' && req.method === 'GET') {
+          const result = await database.read(), id = url.searchParams.get('vehicleRepairId')
+          return json(res, 200, { records: result.snapshot.data.maintenanceRecords.filter(row => !id || row.vehicleRepairId === Number(id)), revision: result.revision })
+        }
+        const media = url.pathname.match(/^\/api\/pc1\/attachments\/([a-f0-9-]{36})$/)
+        if (media && ['GET','HEAD'].includes(req.method)) {
+          const file = await database.readMaintenanceMedia(media[1])
+          if (!file) return json(res, 404, { message: '附件不存在，可能尚未在当前数据库导入' })
+          const length = file.content.length, headers = { 'Content-Type': file.mime_type, 'Accept-Ranges': 'bytes', 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, max-age=3600', 'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(file.file_name)}` }
+          let start = 0, end = length - 1, status = 200
+          if (req.headers.range) {
+            const range = req.headers.range.match(/^bytes=(\d*)-(\d*)$/)
+            if (!range || (!range[1] && !range[2])) { res.writeHead(416, { ...headers, 'Content-Range': `bytes */${length}` }); return res.end() }
+            if (!range[1]) start = Math.max(0, length - Number(range[2]))
+            else { start = Number(range[1]); if (range[2]) end = Math.min(end, Number(range[2])) }
+            if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= length) { res.writeHead(416, { ...headers, 'Content-Range': `bytes */${length}` }); return res.end() }
+            status = 206; headers['Content-Range'] = `bytes ${start}-${end}/${length}`
+          }
+          res.writeHead(status, { ...headers, 'Content-Length': end - start + 1 })
+          return res.end(req.method === 'HEAD' ? undefined : file.content.subarray(start, end + 1))
+        }
         if (url.pathname.startsWith('/api/planning/')) {
           if (['POST', 'DELETE'].includes(req.method) && req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return json(res, 403, { message: '拒绝跨站写入' })
           const cookie = (req.headers.cookie || '').split(';').map(value => value.trim()).find(value => value.startsWith('pc1_import_session='))
@@ -109,11 +134,11 @@ export function createHandler(database) {
       // never fall through to the old static server or SPA fallback.
       if (decoded.includes('\\') || decoded.includes('\0') || decoded.split('/').some(x => x === '..' || x.startsWith('.'))) return json(res, 403, { message: '禁止访问' })
       const publicPath = decoded === '/' ? '/index.html' : decoded
-      if (publicPath !== '/index.html' && !publicPath.startsWith('/src/') && !publicPath.startsWith('/vendor/')) return json(res, 404, { message: '文件不存在' })
+      if (!['/index.html','/demo.html'].includes(publicPath) && !publicPath.startsWith('/src/') && !publicPath.startsWith('/vendor/')) return json(res, 404, { message: '文件不存在' })
       const file = path.join(projectRoot, publicPath)
       let content
       try { content = await fs.readFile(file) } catch { return json(res, 404, { message: '文件不存在' }) }
-      const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png' }
+      const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp' }
       res.writeHead(200, { 'Content-Type': mime[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
       res.end(req.method === 'HEAD' ? undefined : content)
     } catch (error) {

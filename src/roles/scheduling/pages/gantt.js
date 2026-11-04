@@ -3,16 +3,18 @@ import { assignmentsForSchedule, componentsForSchedule, componentOf, employeeOf,
 import { toggleTaskLock } from '../../../core/actions.js'
 import { openModal, toast } from '../../../core/ui.js'
 import { ensureGanttRange, renderGantt, renderGanttToolbar, resetGanttRange, rowsInGanttRange, updateGanttRange } from '../../../shared/gantt.js'
+import { planningTasks } from '../../../core/planning-view.js'
 
 export const ganttPage = {
-  render({ state }) {
+  render({ state, compact = false }) {
     const vehicle = state.vehicleRepairs.find(v=>v.id===state.selectedVehicleRepairId) || state.vehicleRepairs[0]
-    const rows = state.schedules.filter(s=>s.vehicleRepairId===vehicle.id)
+    const rows = planningTasks(state,vehicle.id)
     const filterKey=`scheduling-${vehicle.id}`
     const range=ensureGanttRange(state,filterKey,rows,vehicle.plannedEntryAt,vehicle.plannedExitAt)
     const visibleRows=rowsInGanttRange(rows,range)
     const pressEnd=rows.find(x=>x.taskId===2014)?.plannedEndAt
-    return `${pageHeader('车辆任务甘特图','严格展示构架4项、轮驱16项原流程；轮对压装到反压保留48小时FS等待。',`<select class="select" style="width:190px" data-gantt-vehicle>${state.vehicleRepairs.map(v=>`<option value="${v.id}" ${v.id===vehicle.id?'selected':''}>${v.locomotiveNo}</option>`).join('')}</select>`)}
+    const picker = `<select class="select" style="width:190px" data-gantt-vehicle aria-label="选择正式排程车辆">${state.vehicleRepairs.map(v=>`<option value="${v.id}" ${v.id===vehicle.id?'selected':''}>${v.locomotiveNo}</option>`).join('')}</select>`
+    return `${compact ? `<div class="card-title-row"><h2>正式排程甘特图</h2>${picker}</div>` : pageHeader('车辆任务甘特图','构架与轮驱流程，点击任务查看详细安排。',picker)}
       <section class="card">
         ${renderGanttToolbar({range,count:visibleRows.length})}
         <div class="legend-row"><span><i class="legend-box frame"></i>构架</span><span><i class="legend-box wheel"></i>轮驱</span><span><i class="legend-line"></i>48小时工艺等待</span><span>点击任务查看资源并可锁定</span></div>

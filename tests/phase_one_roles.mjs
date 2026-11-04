@@ -5,8 +5,14 @@ const roleList=Object.values(roles)
 assert.equal(roleList.length,18,'角色数量应为18')
 assert.equal(roleCatalog.length,18,'角色入口数量应为18')
 assert.equal(new Set(roleCatalog.map(r=>r.id)).size,18,'角色ID必须唯一')
-assert.equal(roleList.reduce((sum,role)=>sum+new Set(role.nav.map(item=>item.section)).size,0),60,'一级功能区数量应为60')
-assert.equal(roleList.reduce((sum,role)=>sum+role.nav.length,0),129,'二级页面数量应为129')
+const requirementNav = role => role.nav.filter(item=>!item.utility)
+assert.equal(roleList.reduce((sum,role)=>sum+new Set(requirementNav(role).map(item=>item.section)).size,0),60,'需求表一级功能区数量应为60')
+assert.equal(roleList.reduce((sum,role)=>sum+requirementNav(role).length,0),129,'需求表二级页面数量应为129')
+assert.equal(roles['system-admin'].defaultPage,'resources','系统管理员应默认进入已实现的基础资源管理')
+for (const id of ['dashboard','resources','components']) {
+  assert.equal(roles['system-admin'].nav.find(item=>item.id===id)?.status,'implemented',`管理员缺少已完成入口${id}`)
+  assert.notEqual(roles['system-admin'].pages[id].implementationStatus,'planned')
+}
 
 for(const role of roleList){
   assert.ok(role.pages[role.defaultPage],`${role.label}默认页不存在`)
@@ -26,4 +32,5 @@ assert.equal(roles.approval.pages[roles.approval.defaultPage].implementationStat
 
 const implementedEntries = roleList.reduce((sum, role) => sum + role.nav.filter(n => n.status === 'implemented').length, 0)
 assert.equal(roles.planning.pages['g2-p2'].implementationStatus,undefined,'月度查询入口应接入实际日历')
-console.log(JSON.stringify({passed:true,roles:18,primaryAreas:60,secondaryPages:129,implementedEntries,plannedEntries:129-implementedEntries},null,2))
+const secondaryPages=roleList.reduce((sum,role)=>sum+role.nav.length,0)
+console.log(JSON.stringify({passed:true,roles:18,requirementPrimaryAreas:60,requirementPages:129,utilityPages:secondaryPages-129,secondaryPages,implementedEntries,plannedEntries:secondaryPages-implementedEntries},null,2))

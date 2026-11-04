@@ -1,4 +1,6 @@
 import { escapeHtml } from '../core/ui.js'
+import { emptyState } from './templates.js'
+import { actionIcon } from './icons.js'
 
 const DAY = 24 * 60 * 60 * 1000
 
@@ -61,25 +63,27 @@ export function renderGanttToolbar({range,count,label='范围内任务'}) {
     <div class="gantt-date-fields">
       <div class="field field-compact"><label>开始日期</label><input class="input" type="date" value="${range.start}" data-gantt-range="start"></div>
       <div class="field field-compact"><label>结束日期</label><input class="input" type="date" value="${range.end}" data-gantt-range="end"></div>
-      <button class="btn btn-sm" data-gantt-reset>恢复全部范围</button>
+      <button class="btn btn-sm" data-gantt-reset>${actionIcon('reset',25)}恢复全部范围</button>
     </div>
     <div class="gantt-range-summary"><strong>${count}</strong><span>${escapeHtml(label)}</span></div>
   </div>`
 }
 
-export function renderGantt({rows,range,labelFor,metaFor,barClassFor=()=>'',attributesFor=()=>'',overlayFor=()=>'',emptyText='当前日期范围内没有任务'}) {
+export function renderGantt({rows,range,labelFor,metaFor,barClassFor=()=>'',attributesFor=()=>'',overlayFor=()=>'',interactive=true,emptyText='当前日期范围内没有任务'}) {
   const start=dateTime(range.start)
   const end=Math.max(start+DAY,dateTime(range.end,true))
   const span=end-start
   const pct=value=>Math.max(0,Math.min(100,((new Date(value).getTime()-start)/span)*100))
   const ticks=ticksFor(start,end)
   const sorted=[...rows].sort((a,b)=>new Date(a.plannedStartAt)-new Date(b.plannedStartAt)||a.id-b.id)
-  if(!sorted.length) return `<div class="empty"><strong>${escapeHtml(emptyText)}</strong><span>请调整日期范围或切换车辆。</span></div>`
+  if(!sorted.length) return emptyState(emptyText,'请调整日期范围或切换车辆。')
   return `<div class="gantt" data-test="gantt">
     <div class="gantt-head"><div class="gantt-label-head">任务 / 时间</div><div class="gantt-scale" style="grid-template-columns:repeat(${ticks.length},1fr)">${ticks.map(t=>`<div>${t}</div>`).join('')}</div></div>
     ${sorted.map(row=>{
       const left=pct(row.plannedStartAt),right=pct(row.plannedEndAt),width=Math.max(.7,right-left)
-      return `<div class="gantt-row"><div class="gantt-task-label"><strong>${escapeHtml(labelFor(row))}</strong><span>${escapeHtml(metaFor(row))}</span></div><div class="gantt-track" style="background-size:${100/ticks.length}% 100%">${overlayFor(row,{pct,start,end})}<button class="gantt-bar ${barClassFor(row)}" style="left:${left}%;width:${width}%" ${attributesFor(row)} title="${escapeHtml(labelFor(row))}">${escapeHtml(labelFor(row))}</button></div></div>`
+      const tag=interactive?'button':'span'
+      const readonlyClass=interactive?'':`is-readonly ${width<5?'is-compact':''}`
+      return `<div class="gantt-row"><div class="gantt-task-label"><strong>${escapeHtml(labelFor(row))}</strong><span>${escapeHtml(metaFor(row))}</span></div><div class="gantt-track" style="background-size:${100/ticks.length}% 100%">${overlayFor(row,{pct,start,end})}<${tag} class="gantt-bar ${readonlyClass} ${barClassFor(row)}" style="left:${left}%;width:${width}%" ${attributesFor(row)} title="${escapeHtml(labelFor(row))} · ${escapeHtml(metaFor(row))}">${escapeHtml(labelFor(row))}</${tag}></div></div>`
     }).join('')}
   </div>`
 }

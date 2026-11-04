@@ -23,7 +23,8 @@ try {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve))
   const base = `http://127.0.0.1:${server.address().port}`
   await fs.mkdir(output, { recursive: true })
-  const browser = await chromium.launch({ channel: 'chrome', headless: true })
+  const channel = process.env.PC1_BROWSER_CHANNEL || (process.platform === 'win32' ? 'msedge' : undefined)
+  const browser = await chromium.launch({ channel, headless: true })
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } })
   const pageErrors = []
   const requestIssues = []
@@ -57,9 +58,10 @@ try {
     assert.ok((await page.locator('.pc-plan-records').innerText()).includes('TEST-MANUAL-01'), 'manual plan must appear in database-backed plan list')
 
     const templateXlsx = page.waitForEvent('download')
-    await page.getByRole('link', { name: '下载 XLSX 模板' }).click()
+    await page.getByRole('link', { name: '下载 Excel 模板' }).click()
     assert.equal((await templateXlsx).suggestedFilename(), '检修计划导入模板.xlsx')
     const templateCsv = page.waitForEvent('download')
+    await page.locator('.guide-other summary').click()
     await page.getByRole('link', { name: '下载 CSV 模板' }).click()
     assert.equal((await templateCsv).suggestedFilename(), '检修计划导入模板.csv')
 
@@ -101,7 +103,7 @@ try {
     assert.match(await page.locator('.pc-plan-result').innerText(), /新增15条，未导入0条/)
     await page.locator('[data-dismiss-result]').click()
     assert.ok(await page.locator('[data-nav="g2-p2"]').count(), `calendar route nav missing at ${page.url()}: ${await page.locator('.sidebar').innerText()}`)
-    await page.locator('[data-nav="g2-p2"]').click()
+    await page.locator('.plan-view-tabs a[href="#/planning/g2-p2"]').click()
     await page.locator('.pc-plan-layout').waitFor()
     assert.equal(await page.locator('[data-import-type]').count(), 0, 'calendar page must not show import controls')
     await page.locator('[data-calendar-month]').fill('2027-11')
@@ -135,6 +137,7 @@ try {
 
     await page.locator('[data-open-vehicle]').first().click()
     await page.locator('.pc-plan-drawer').waitFor()
+    await page.locator('[data-close-detail]').waitFor()
     assert.ok((await page.locator('.pc-plan-drawer').innerText()).includes('测试局'))
     assert.ok((await page.locator('.pc-plan-drawer').innerText()).includes('尚未正式排程'))
     await page.locator('[data-close-detail]').click()

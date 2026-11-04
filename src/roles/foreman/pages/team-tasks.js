@@ -10,7 +10,7 @@ export const teamTasksPage = {
     const ids=new Set(state.employees.filter(e=>e.teamId===team.id).map(e=>e.id))
     const vehicleId=state.selectedVehicleRepairId || state.vehicleRepairs[0]?.id
     const vehicle=state.vehicleRepairs.find(v=>v.id===vehicleId)||state.vehicleRepairs[0]
-    const allRows=state.schedules.filter(s=>s.vehicleRepairId===vehicleId&&assignmentsForSchedule(state,s.id).some(a=>ids.has(a.employeeId)))
+    const allRows=state.schedules.filter(s=>s.vehicleRepairId===vehicleId&&s.versionId===vehicle?.currentVersionId&&assignmentsForSchedule(state,s.id).some(a=>ids.has(a.employeeId)))
     const filterKey=`foreman-${vehicleId}-${team.id}`
     const range=ensureGanttRange(state,filterKey,allRows,vehicle?.plannedEntryAt,vehicle?.plannedExitAt)
     const rows=rowsInGanttRange(allRows,range)

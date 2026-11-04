@@ -3,8 +3,10 @@ import pg from 'pg'
 import { createState } from '../src/core/state.js'
 import { exportDemoSnapshot, parseDemoSnapshot } from '../src/core/demo-persistence.js'
 import { databaseBusinessCollections, fromDatabaseStatus, stateTables, toDatabaseStatus } from './state-mapping.js'
+import { prepareMaintenanceRecord } from './maintenance.js'
 
 // PostgreSQL's timestamp-without-time-zone values represent workshop local time.
+pg.types.setTypeParser(1082, value => value)
 pg.types.setTypeParser(1114, value => value.replace(' ', 'T'))
 pg.types.setTypeParser(20, value => { const number = Number(value); return Number.isSafeInteger(number) ? number : value })
 pg.types.setTypeParser(1700, value => { const number = Number(value); return Number.isFinite(number) ? number : value })
@@ -124,6 +126,29 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
     return mapStateRows(clientData, definitions, appPayload)
   }
 
+  function addResourceDemoRequirements(data) {
+    const defaults = createState()
+    if (!data.materials.some(row => row.name === 'O形圈')) {
+      data.materials.push({ ...defaults.materials.find(row => row.name === 'O形圈'), id: Math.max(0, ...data.materials.map(row => Number(row.id) || 0)) + 1 })
+    }
+    for (const [key, inventory, idField] of [['toolRequirements', 'tools', 'toolId'], ['materialRequirements', 'materials', 'materialId']]) {
+      if (data[key]?.length) continue
+      const idMap = new Map()
+      for (const requirement of defaults[key]) {
+        const source = defaults[inventory].find(row => row.id === requirement[idField])
+        if (!source || idMap.has(source.id)) continue
+        let resource = data[inventory].find(row => row.name === source.name)
+        if (!resource) {
+          resource = { ...source, id: Math.max(0, ...data[inventory].map(row => Number(row.id) || 0)) + 1 }
+          data[inventory].push(resource)
+        }
+        idMap.set(source.id, resource.id)
+      }
+      data[key] = defaults[key].map(row => ({ ...row, [idField]: idMap.get(row[idField]) }))
+    }
+    return data
+  }
+
   async function readLegacyV1(client) {
     const data = createState()
     const ref = await client.query(`SELECT collection,payload FROM ${quotedSchema}.reference_data`)
@@ -153,6 +178,7 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
         await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`rail-maintenance:${schema}`])
         const sql = (await fs.readFile(new URL('./schema.sql', import.meta.url), 'utf8')).replaceAll('__SCHEMA_LITERAL__', literalSchema).replaceAll('__SCHEMA__', quotedSchema)
         await client.query(sql)
+        await client.query(`CREATE TABLE IF NOT EXISTS ${quotedSchema}.pc1_maintenance_media (id uuid PRIMARY KEY, file_name text NOT NULL, mime_type text NOT NULL, content bytea NOT NULL, created_at timestamptz NOT NULL DEFAULT now())`)
         const exists = await client.query(`SELECT to_regclass($1) AS legacy`, [`${schema}.metadata`])
         const meta = await client.query(`SELECT revision,schema_version FROM ${quotedSchema}.application_state WHERE singleton FOR UPDATE`)
         const revision = Number(meta.rows[0].revision)
@@ -166,12 +192,17 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
               migrated = true
             } else await writeData(client, initialData, definitions)
           } else await writeData(client, initialData, definitions)
-          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=1,schema_version=2,updated_at=now() WHERE singleton`)
+          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=1,schema_version=3,updated_at=now() WHERE singleton`)
           initialized = !migrated
         } else if (Number(meta.rows[0].schema_version) < 2) {
           const data = await readLegacyV1(client)
+          await writeData(client, addResourceDemoRequirements(data), definitions)
+          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=revision+1,schema_version=3,updated_at=now() WHERE singleton`)
+          migrated = true
+        } else if (Number(meta.rows[0].schema_version) < 3) {
+          const data = addResourceDemoRequirements(await readData(client, definitions))
           await writeData(client, data, definitions)
-          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=revision+1,schema_version=2,updated_at=now() WHERE singleton`)
+          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=revision+1,schema_version=3,updated_at=now() WHERE singleton`)
           migrated = true
         }
         if (exists.rows[0].legacy) {
@@ -211,6 +242,30 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
         await client.query('COMMIT')
         return { revision: Number(meta.revision), savedAt: meta.updated_at.toISOString() }
       } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
+    },
+    async submitMaintenanceRecord(input) {
+      const definitions = JSON.parse(await fs.readFile(definitionPath, 'utf8'))
+      const client = await pool.connect()
+      try {
+        await client.query('BEGIN')
+        const meta = (await client.query(`SELECT revision FROM ${quotedSchema}.application_state WHERE singleton FOR UPDATE`)).rows[0]
+        const data = await readData(client, definitions)
+        const existing = input.requestId && data.maintenanceRecords.find(row => row.requestId === input.requestId)
+        if (existing) { await client.query('COMMIT'); return { record: existing, revision: Number(meta.revision), duplicate: true } }
+        const { record, files } = prepareMaintenanceRecord(data, input)
+        for (const file of files) await client.query(`INSERT INTO ${quotedSchema}.pc1_maintenance_media(id,file_name,mime_type,content) VALUES($1,$2,$3,$4)`, [file.id, file.name, file.mimeType, file.content])
+        data.maintenanceRecords.push(record)
+        const checked = exportDemoSnapshot(data).data
+        await client.query('SET CONSTRAINTS ALL DEFERRED')
+        await writeData(client, checked, definitions)
+        const result = (await client.query(`UPDATE ${quotedSchema}.application_state SET revision=revision+1,updated_at=now() WHERE singleton RETURNING revision`)).rows[0]
+        await client.query('COMMIT')
+        return { record, revision: Number(result.revision) }
+      } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
+    },
+    async readMaintenanceMedia(id) {
+      if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(id)) return null
+      return (await pool.query(`SELECT file_name,mime_type,content FROM ${quotedSchema}.pc1_maintenance_media WHERE id=$1`, [id])).rows[0] || null
     },
     async counts() {
       const result = await pool.query(`SELECT tablename FROM pg_tables WHERE schemaname=$1 ORDER BY tablename`, [schema])

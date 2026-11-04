@@ -22,6 +22,8 @@ coverage/
 test-results/
 test-artifacts/
 backups/
+__pycache__/
+*.py[cod]
 
 # Local editor and OS files
 .vscode/

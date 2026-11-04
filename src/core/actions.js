@@ -341,11 +341,16 @@ export function addEmployeeToTask(state, scheduleTaskId, employeeId, adjustedBy=
 export function startTask(state, scheduleTaskId, employeeId) {
   const schedule = scheduleOf(state,scheduleTaskId)
   if (!schedule) return {ok:false,message:'任务不存在'}
+  if (!state.vehicleRepairs.some(vehicle => vehicle.id === schedule.vehicleRepairId && vehicle.currentVersionId === schedule.versionId)) return {ok:false,message:'历史版本任务不能开始作业'}
+  if (!state.scheduleVersions.some(version=>version.id===schedule.versionId && version.vehicleRepairId===schedule.vehicleRepairId && version.status==='PUBLISHED')) return {ok:false,message:'任务尚未正式发布，不能开始作业'}
+  const vehicle=state.vehicleRepairs.find(row=>row.id===schedule.vehicleRepairId)
+  if (['COMPLETED','CANCELLED','CANCELED','CLOSED'].includes(vehicle.status)) return {ok:false,message:'车辆检修已结束或取消，不能开始作业'}
   const hasAssignment = state.employeeAssignments.some(a=>a.scheduleTaskId===schedule.id && a.employeeId===Number(employeeId) && a.status!=='CANCELLED')
   if (!hasAssignment) return {ok:false,message:'当前人员未分配该任务'}
   if (schedule.status !== 'NOT_STARTED') return {ok:false,message:schedule.status === 'IN_PROGRESS' ? '任务已经开始' : '任务当前状态不能开始'}
   schedule.status = 'IN_PROGRESS'
   schedule.actualStartAt = iso(new Date())
+  vehicle.status = 'IN_PROGRESS'
   state.employeeAssignments.filter(a=>a.scheduleTaskId===schedule.id && a.status!=='CANCELLED').forEach(a=>a.status='WORKING')
   log(state,'作业',`${taskOf(state,schedule.taskId)?.name} 开始作业`)
   return {ok:true,message:'已开始作业'}
@@ -354,6 +359,8 @@ export function startTask(state, scheduleTaskId, employeeId) {
 export function completeTask(state, scheduleTaskId, employeeId) {
   const schedule = scheduleOf(state,scheduleTaskId)
   if (!schedule) return {ok:false,message:'任务不存在'}
+  if (!state.vehicleRepairs.some(vehicle => vehicle.id === schedule.vehicleRepairId && vehicle.currentVersionId === schedule.versionId)) return {ok:false,message:'历史版本任务不能完成作业'}
+  if (!state.scheduleVersions.some(version=>version.id===schedule.versionId && version.vehicleRepairId===schedule.vehicleRepairId && version.status==='PUBLISHED')) return {ok:false,message:'任务尚未正式发布，不能完成作业'}
   const hasAssignment = state.employeeAssignments.some(a=>a.scheduleTaskId===schedule.id && a.employeeId===Number(employeeId) && a.status!=='CANCELLED')
   if (!hasAssignment) return {ok:false,message:'当前人员未分配该任务'}
   if (schedule.status !== 'IN_PROGRESS') return {ok:false,message:schedule.status === 'COMPLETED' ? '任务已经完成' : '任务尚未开始'}
@@ -370,6 +377,7 @@ export function completeTask(state, scheduleTaskId, employeeId) {
 export function qualityDecision(state, scheduleTaskId, result, opinion='') {
   const schedule = scheduleOf(state, scheduleTaskId)
   if (!schedule || schedule.status !== 'COMPLETED') return {ok:false,message:'只有已完成作业才能进行质量确认'}
+  if (!state.vehicleRepairs.some(vehicle=>vehicle.id===schedule.vehicleRepairId && vehicle.currentVersionId===schedule.versionId) || !state.scheduleVersions.some(version=>version.id===schedule.versionId && version.vehicleRepairId===schedule.vehicleRepairId && version.status==='PUBLISHED')) return {ok:false,message:'仅当前正式发布的任务可以进行质量确认'}
   const rec = state.qualityRecords.find(q=>q.scheduleTaskId===Number(scheduleTaskId))
   if (!rec) return {ok:false,message:'未找到该任务的待检记录'}
   if (rec.status !== 'PENDING') return {ok:false,message:'该质量记录已经处理'}
@@ -438,6 +446,7 @@ export function deletePlan(state, id) {
   if (state.schedules.some(s => s.vehicleRepairId === numericId)) return { ok:false, message:'计划已经生成排程，不能删除' }
   if (state.pc1SchedulePreview?.vehicleRepairIds?.includes(numericId)) return { ok:false, message:'本车正在模拟排程，请先结束模拟再删除计划' }
   state.vehicleRepairs = state.vehicleRepairs.filter(v => v.id !== numericId)
+  if (state.planningView?.resourceVehicleIds) state.planningView.resourceVehicleIds = state.planningView.resourceVehicleIds.filter(id => id !== numericId)
   if (state.selectedVehicleRepairId === numericId) state.selectedVehicleRepairId = state.vehicleRepairs[0]?.id || null
   log(state, '计划', `删除检修计划 ${plan.locomotiveNo}`)
   return { ok:true }
@@ -497,13 +506,20 @@ function validateResource(state, collection, data, currentId = null) {
   const row = data || {}
   const required = {
     teams: ['name'], employees: ['no', 'name', 'teamId'], workstations: ['code', 'name', 'capacity'],
-    equipment: ['code', 'name', 'type'], tools: ['name', 'quantity'], materials: ['name', 'quantity'],
+    equipment: ['code', 'name', 'type'], tools: ['name', 'quantity'], materials: ['name', 'quantity', 'unit'],
     spareParts: ['name', 'quantity'], componentInstances: ['typeId', 'serialNo'],
   }[collection] || []
   for (const field of required) {
     if (row[field] === undefined || row[field] === null || String(row[field]).trim() === '') return { ok:false, message:`${field} 不能为空` }
   }
   if (['tools', 'materials', 'spareParts'].includes(collection) && (!Number.isFinite(Number(row.quantity)) || Number(row.quantity) < 0)) return { ok:false, message:'数量必须是非负数字' }
+  if (collection === 'tools' && !Number.isInteger(Number(row.quantity))) return { ok:false, message:'工具数量必须是整数' }
+  if (collection === 'tools') {
+    const cycle = row.inspection_cycle_months ?? row.inspectionCycleMonths
+    if (cycle != null && cycle !== '' && (!Number.isInteger(Number(cycle)) || Number(cycle) < 0)) return { ok:false, message:'检修周期必须是非负整数' }
+  }
+  const optionalDate = collection === 'tools' ? row.last_inspection_at ?? row.lastInspectionAt : collection === 'spareParts' ? row.manufacture_date ?? row.manufactureDate : null
+  if (optionalDate != null && optionalDate !== '' && !Number.isFinite(new Date(optionalDate).getTime())) return { ok:false, message:'日期格式无效，请填写有效日期' }
   if (collection === 'workstations' && (!Number.isInteger(Number(row.capacity)) || Number(row.capacity) < 1)) return { ok:false, message:'工位容量必须是大于 0 的整数' }
   if (collection === 'employees' && !state.teams.some(t => t.id === Number(row.teamId))) return { ok:false, message:'所属班组不存在' }
   if (collection === 'equipment' && row.workstationId !== '' && row.workstationId != null && !state.workstations.some(w => w.id === Number(row.workstationId))) return { ok:false, message:'所属工位不存在' }
@@ -521,6 +537,10 @@ function validateResource(state, collection, data, currentId = null) {
 }
 
 function syncResourceDbFields(collection, row) {
+  if (['equipment', 'componentInstances'].includes(collection)) row.workstationId = row.workstationId === '' || row.workstationId == null ? null : Number(row.workstationId)
+  for (const [legacy, canonical] of Object.entries(collection === 'tools' ? { inspection_cycle_months:'inspectionCycleMonths', last_inspection_at:'lastInspectionAt' } : collection === 'spareParts' ? { manufacture_date:'manufactureDate' } : {})) {
+    if (row[legacy] !== undefined) row[canonical] = row[legacy] === '' ? null : row[legacy]
+  }
   const aliases = {
     teams: { name:'team_name' }, employees: { no:'employee_no', name:'employee_name' },
     workstations: { code:'workstation_code', name:'workstation_name', line:'production_line' },
@@ -541,11 +561,14 @@ function syncResourceDbFields(collection, row) {
 export function createResource(state, collection, data) {
   const rows = state[collection]
   if (!Array.isArray(rows)) return { ok:false, message:'资源类型不存在' }
-  const validation = validateResource(state, collection, data)
+  // Keep older material-create callers compatible while ensuring every new
+  // inventory row has a usable unit for stock checks and task lists.
+  const input = collection === 'materials' ? { ...data, unit: data?.unit || '件' } : data
+  const validation = validateResource(state, collection, input)
   if (!validation.ok) return validation
   const id = Math.max(0, ...rows.map(x=>Number(x.id)||0)) + 1
   const timestamp = iso(new Date())
-  const row = { ...data, id, createdAt: timestamp, updatedAt: timestamp, created_at: timestamp, updated_at: timestamp }
+  const row = { ...input, id, createdAt: timestamp, updatedAt: timestamp, created_at: timestamp, updated_at: timestamp }
   if (collection === 'employees') {
     const team = state.teams.find(t=>t.id===Number(row.teamId))
     row.teamId = Number(row.teamId)
@@ -606,6 +629,10 @@ export function deleteResource(state, collection, id) {
   }
   if (collection === 'componentInstances' && state.componentAssignments.some(a => a.componentInstanceId === numericId && a.status !== 'CANCELLED')) {
     return { ok:false, message:'配件实例已经被排程使用，不能删除' }
+  }
+  if ((collection === 'tools' && state.toolRequirements?.some(r => r.toolId === numericId)) ||
+      (collection === 'materials' && state.materialRequirements?.some(r => r.materialId === numericId))) {
+    return { ok:false, message:'该资源已有检修任务需求，不能删除，可改为停用' }
   }
   const index = state[collection].findIndex(x=>x.id===numericId)
   state[collection].splice(index, 1)

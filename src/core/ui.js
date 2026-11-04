@@ -1,3 +1,6 @@
+import { contextIcon } from '../shared/workspace-art.js'
+import { icon } from '../shared/icons.js'
+
 export function escapeHtml(value='') {
   return String(value)
     .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
@@ -27,7 +30,7 @@ export function openModal({ title, body, confirmText='确认', cancelText='取�
   wrap.className = 'modal-backdrop'
   wrap.innerHTML = `
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="${titleId}" style="${wide ? 'width:min(780px,100%)' : ''}">
-      <div class="modal-head"><h3 id="${titleId}">${escapeHtml(title)}</h3><button class="btn btn-icon btn-sm" data-modal-close aria-label="关闭对话框">×</button></div>
+      <div class="modal-head"><div class="modal-title-line"><span class="modal-title-icon">${contextIcon(title,22)}</span><h3 id="${titleId}">${escapeHtml(title)}</h3></div><button class="btn btn-icon btn-sm" data-modal-close aria-label="关闭对话框">${icon('close',16)}</button></div>
       <div class="modal-body">${body}</div>
       <div class="modal-actions">
         <button class="btn" data-modal-close>${cancelText}</button>
@@ -39,7 +42,7 @@ export function openModal({ title, body, confirmText='确认', cancelText='取�
     if (busy) return
     wrap.remove()
     if (opener?.isConnected) opener.focus({ preventScroll: true })
-    else document.querySelector('[data-add-plan], [data-pc-data-tools]')?.focus({ preventScroll: true })
+    else document.querySelector('[data-add-plan], [data-pc-data-tools], #main-content')?.focus({ preventScroll: true })
   }
   const focusable = () => [...wrap.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')].filter(el => el.getClientRects().length)
   wrap.addEventListener('keydown', e => {
@@ -51,7 +54,7 @@ export function openModal({ title, body, confirmText='确认', cancelText='取�
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
     }
   })
-  requestAnimationFrame(() => { if (wrap.isConnected) (wrap.querySelector('input:not(:disabled)') || focusable()[0])?.focus() })
+  if (wrap.isConnected) (wrap.querySelector('input:not(:disabled):not([type="hidden"])') || focusable()[0])?.focus()
   wrap.addEventListener('click', (e) => {
     if (e.target === wrap || e.target.closest('[data-modal-close]')) close()
   })

@@ -9,6 +9,7 @@ export const myTasksPage={
     const emp=employeeOf(state,state.selectedWorkerId)||state.employees[0]
     const vehicleId=state.selectedVehicleRepairId||state.vehicleRepairs[0]?.id
     const vehicle=state.vehicleRepairs.find(v=>v.id===vehicleId)||state.vehicleRepairs[0]
+    const published=state.scheduleVersions.some(row=>row.id===vehicle?.currentVersionId && row.vehicleRepairId===vehicle?.id && row.status==='PUBLISHED')
     const allTasks=employeeTasks(state,emp.id,vehicleId)
     const filterKey=`worker-${vehicleId}-${emp.id}`
     const range=ensureGanttRange(state,filterKey,allTasks.map(x=>x.schedule),vehicle?.plannedEntryAt,vehicle?.plannedExitAt)
@@ -17,7 +18,8 @@ export const myTasksPage={
     const done=rows.filter(x=>x.schedule.status==='COMPLETED').length
     const active=rows.filter(x=>x.schedule.status==='IN_PROGRESS').length
     const headerActions=`<select class="select" style="width:175px" data-worker-vehicle>${state.vehicleRepairs.map(v=>`<option value="${v.id}" ${v.id===vehicleId?'selected':''}>${v.locomotiveNo}</option>`).join('')}</select><select class="select" style="width:170px" data-worker-select>${state.employees.map(e=>`<option value="${e.id}" ${e.id===emp.id?'selected':''}>${e.name} · ${e.teamName}</option>`).join('')}</select>`
-    return `${pageHeader('我的检修任务',`当前人员：${emp.name}（${emp.teamName}）。无需账号登录，可直接切换人员查看不同任务。`,headerActions)}
+    return `${pageHeader('检修作业',`查看车辆检修任务并记录作业进度。当前查询对象：${emp.name}（${emp.teamName}）。`,headerActions)}
+      ${!published?'<p class="notice notice-info" role="status">当前车辆计划尚未正式发布，任务仅供预览。发布后可开始作业。</p>':''}
       <div class="grid grid-4" style="margin-bottom:16px">${statCard('范围内任务',rows.length,vehicle?.locomotiveNo||'当前车辆')}${statCard('进行中',active,'正在执行','metric-indigo')}${statCard('已完成',done,'进入质量待检','metric-green')}${statCard('当前班组',emp.teamName,emp.no)}</div>
       <section class="card" style="margin-bottom:16px">
         ${renderGanttToolbar({range,count:rows.length,label:'个人任务'})}
@@ -27,7 +29,7 @@ export const myTasksPage={
       <div class="task-card-list">${rows.map(({schedule,task})=>{
         const coworkers=assignmentsForSchedule(state,schedule.id).map(a=>employeeOf(state,a.employeeId)?.name).filter(n=>n&&n!==emp.name)
         const comps=componentsForSchedule(state,schedule.id).map(a=>componentOf(state,a.componentInstanceId)?.serialNo).filter(Boolean)
-        return `<section class="card task-card" id="worker-task-${schedule.id}"><div class="task-main"><div><div class="task-process">${task.process}</div><h3>${task.name}</h3><p>${fmtFullDateTime(schedule.plannedStartAt)} → ${fmtFullDateTime(schedule.plannedEndAt)}</p><div class="tag-row">${badge(taskStatusLabel(schedule.status),statusBadge(schedule.status))}<span class="badge badge-slate">工位：${workstationOf(state,schedule.workstationId)?.name||'—'}</span><span class="badge badge-slate">同组：${coworkers.join('、')||'无'}</span>${comps.length?`<span class="badge badge-purple">配件：${comps.join('、')}</span>`:''}</div></div><div class="task-actions">${schedule.status==='NOT_STARTED'?`<button class="btn btn-primary" data-start-task="${schedule.id}">开始作业</button>`:''}${schedule.status==='IN_PROGRESS'?`<button class="btn btn-success" data-complete-task="${schedule.id}">完成作业</button>`:''}${schedule.status==='COMPLETED'?'<span class="badge badge-green">已完成</span>':''}</div></div></section>`
+        return `<section class="card task-card" id="worker-task-${schedule.id}"><div class="task-main"><div><div class="task-process">${task.process}</div><h3>${task.name}</h3><p>${fmtFullDateTime(schedule.plannedStartAt)} → ${fmtFullDateTime(schedule.plannedEndAt)}</p><div class="tag-row">${badge(taskStatusLabel(schedule.status),statusBadge(schedule.status))}<span class="badge badge-slate">工位：${workstationOf(state,schedule.workstationId)?.name||'—'}</span><span class="badge badge-slate">同组：${coworkers.join('、')||'无'}</span>${comps.length?`<span class="badge badge-purple">配件：${comps.join('、')}</span>`:''}</div></div><div class="task-actions">${!published?'<span class="badge badge-amber">待正式发布</span>':schedule.status==='NOT_STARTED'?`<button class="btn btn-primary" data-start-task="${schedule.id}">开始作业</button>`:''}${published && schedule.status==='IN_PROGRESS'?`<button class="btn btn-success" data-complete-task="${schedule.id}">完成作业</button>`:''}${schedule.status==='COMPLETED'?'<span class="badge badge-green">已完成</span>':''}</div></div></section>`
       }).join('')||'<div class="empty"><strong>当前范围内暂无个人任务</strong><span>请选择其他车辆、人员或日期范围。</span></div>'}</div>`
   },
   mount(ctx) {
