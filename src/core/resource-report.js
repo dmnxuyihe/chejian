@@ -1,4 +1,5 @@
 import { planningTasks } from './planning-view.js'
+import { toolAvailableQuantity } from './tool-management.js'
 import { supplyCoverageTaskIds, toolRequirements as sourceTools, materialRequirements as sourceMaterials } from '../data/task-supplies.js'
 
 const overlaps = (a,b) => a.start < b.end && b.start < a.end
@@ -108,7 +109,8 @@ export function buildResourceReport(state, vehicleIds) {
   }
   const tools=[...new Set(toolUses.filter(u=>u.selected).map(u=>u.resourceId))].map(id=>{
     const resource=state.tools.find(t=>t.id===id)
-    const stock=resource?.status==='AVAILABLE'&&validQuantity(resource.quantity)&&Number.isInteger(resource.quantity)?resource.quantity:0
+    const dates=toolUses.filter(u=>u.resourceId===id&&u.timed).map(u=>new Date(u.end))
+    const stock=Math.min(toolAvailableQuantity(state,id),...dates.map(at=>toolAvailableQuantity(state,id,at)))
     if(!resource||!validQuantity(resource.quantity)||!Number.isInteger(resource.quantity))complain(`${resource?.name||'工具'}的可用数量未登记`)
     const uses=toolUses.filter(u=>u.resourceId===id).sort((a,b)=>(a.timed?0:1)-(b.timed?0:1)||a.start-b.start||a.vehicleRepairId-b.vehicleRepairId||a.taskId-b.taskId)
     const allocated=[]

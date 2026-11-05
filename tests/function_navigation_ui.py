@@ -15,17 +15,17 @@ with sync_playwright() as p:
     expect(page).to_have_url(BASE+'/#/functions/plans/monthly-calendar')
     before=page.request.get(BASE+'/api/state').json()['snapshot']['data']
     entries=page.evaluate("async()=> (await import('/src/functions/catalog.js')).functionEntries")
-    assert len([entry for entry in entries if entry['status']=='implemented'])==22
+    assert len([entry for entry in entries if entry['status']=='implemented'])==28
     expect(page.locator('[data-nav-group]')).to_have_count(5)
-    expect(page.locator('.sidebar .function-item')).to_have_count(19)
+    expect(page.locator('.sidebar .function-item')).to_have_count(20)
     expect(page.locator('.workspace-nav,.function-primary-card,[data-role-card],[data-switch-role]')).to_have_count(0)
     page.goto(BASE+'/#/functions/catalog')
     expect(page.locator('[data-function-directory]')).to_be_visible()
-    expect(page.locator('[data-function-label]')).to_have_count(18)
+    expect(page.locator('[data-function-label]')).to_have_count(19)
     page.locator('[data-function-search]').fill('工具')
     expect(page.locator('.function-group:not([hidden])')).to_have_count(1)
     expect(page.locator('[data-function-label]:visible')).to_have_count(1)
-    expect(page.locator('[data-function-label]:visible')).to_contain_text('基础资源台账')
+    expect(page.locator('[data-function-label]:visible')).to_contain_text('工具管理')
     page.locator('[data-function-search]').fill('不存在XYZ')
     expect(page.locator('[data-function-empty]')).to_be_visible()
     page.locator('[data-function-search]').fill('')

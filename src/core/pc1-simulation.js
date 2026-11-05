@@ -33,7 +33,9 @@ const tasksFor = (state, vehicle) => state.tasks.filter(task => task.repairProgr
 export function pc1SourceSignature(state) {
   // Database-generated audit timestamps and alias fields do not change the
   // scheduling inputs. Compare canonical business fields across save/reload.
-  return stable(Object.fromEntries(Object.entries(sourceFields).map(([key, fields]) => [key, (state[key] || []).map(row => Object.fromEntries(fields.map(field => [field, row[field] ?? null]))).sort((a,b) => stable(a).localeCompare(stable(b)))])))
+  const sources=Object.fromEntries(Object.entries(sourceFields).map(([key, fields]) => [key, (state[key] || []).map(row => Object.fromEntries(fields.map(field => [field, row[field] ?? null]))).sort((a,b) => stable(a).localeCompare(stable(b)))]))
+  sources.toolAssets=(state.toolManagement?.assets||[]).map(a=>Object.fromEntries(['id','toolId','quantity','status','inspectionCycleMonths','lastInspectionAt'].map(k=>[k,a[k]??null])))
+  return stable(sources)
 }
 
 function formalRows(state) {
