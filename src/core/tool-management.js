@@ -48,6 +48,17 @@ export function toolAlerts(state,at=new Date()){
 }
 const synchronize=state=>{for(const t of state.tools){const assets=state.toolManagement.assets.filter(a=>a.toolId===t.id);if(assets.length)t.quantity=assets.reduce((n,a)=>n+assetStock(state.toolManagement,a),0)}}
 const nameOf=(rows,id)=>rows.find(r=>r.id===id)?.name||'工具库'
+const employeeIdByName=(state,value)=>state.employees.find(e=>e.name===value)?.id||null
+function createToolApproval(state,disposal,now){
+  state.approvalRecords ||= []
+  state.approvalRecords.push({id:next(state.approvalRecords),businessType:'TOOL_DISPOSAL',businessId:disposal.id,approvalLevel:1,approvalRole:'工具遗失/报废审核',approverId:null,approvalStatus:'PENDING',approvalOpinion:'',approvedAt:null,createdAt:now})
+}
+function updateToolApproval(state,disposal,decision,opinion,actor,now){
+  state.approvalRecords ||= []
+  const approval=state.approvalRecords.find(r=>r.businessType==='TOOL_DISPOSAL'&&r.businessId===disposal.id&&r.approvalStatus==='PENDING')
+  if(!approval)fail('未找到对应的工具审核记录')
+  approval.approvalStatus=decision;approval.approvalOpinion=opinion;approval.approverId=employeeIdByName(state,actor);approval.approvedAt=now
+}
 const available=(m,a,n,now,inspection=true)=>{if((inspection?assetStock(m,a):assetInStock(m,a))<n)fail('在库可用数量不足或工具已停用');if(inspection&&!validAt(a,now))fail('工具检定已到期或缺少检定日期，不能领用或调拨')}
 const stockKey=(m,a)=>JSON.stringify([a.quantity,a.status,a.warehouseId,assetHeld(m,a.id)])
 function useCheck(state,asset,scheduleId){
@@ -189,7 +200,7 @@ export function applyToolCommand(state,input,{now=new Date().toISOString(),hardw
       if(p.result==='PASS'){
         if(row.quantity===a.quantity){a.lastInspectionAt=now;a.status='AVAILABLE'}
         else{a.quantity-=row.quantity;m.assets.push({...a,id:next(m.assets),code:`${a.code.slice(0,45)}-S${row.id}`,tag:'',quantity:row.quantity,lastInspectionAt:now,status:'AVAILABLE'})}
-      }else{const disposal={id:next(m.disposals),assetId:a.id,quantity:row.quantity,kind:'SCRAPPED',reason:`${row.kind==='REPAIR'?'维修':'检定'}不合格：${certificate}`,status:'PENDING',at:now,actor,serviceId:row.id};m.disposals.push(disposal);result.disposalId=disposal.id}
+      }else{const disposal={id:next(m.disposals),assetId:a.id,quantity:row.quantity,kind:'SCRAPPED',reason:`${row.kind==='REPAIR'?'维修':'检定'}不合格：${certificate}`,status:'PENDING',at:now,actor,serviceId:row.id};m.disposals.push(disposal);createToolApproval(copy,disposal,now);result.disposalId=disposal.id}
       break
     }
     case 'DISPOSAL_REQUEST':{
@@ -200,13 +211,13 @@ export function applyToolCommand(state,input,{now=new Date().toISOString(),hardw
         if(!open(loan)||!line||n>outstanding(line)-pending)fail('借用单未还数量不足或已有待审核申请')
       }else available(m,a,n,now,false)
       if(!['LOST','SCRAPPED'].includes(p.kind))fail('申请类型无效')
-      const row={id:next(m.disposals),assetId:a.id,quantity:n,kind:p.kind,reason:text(p.reason,'申请原因',500),status:'PENDING',at:now,actor,loanId:p.loanId?Number(p.loanId):null};m.disposals.push(row);result.id=row.id;break
+      const row={id:next(m.disposals),assetId:a.id,quantity:n,kind:p.kind,reason:text(p.reason,'申请原因',500),status:'PENDING',at:now,actor,loanId:p.loanId?Number(p.loanId):null};m.disposals.push(row);createToolApproval(copy,row,now);result.id=row.id;break
     }
     case 'DISPOSAL_REVIEW':{
       const row=get(m.disposals,p.id,'遗失报废申请');if(row.status!=='PENDING')fail('申请已经审核')
       if(!['APPROVED','REJECTED'].includes(p.decision))fail('审核结果无效')
       if(actor===row.actor)fail('申请人与审核人不能相同')
-      row.opinion=text(p.opinion,'审核意见',500);row.status=p.decision;row.reviewedAt=now;row.reviewer=actor
+      row.opinion=text(p.opinion,'审核意见',500);row.status=p.decision;row.reviewedAt=now;row.reviewer=actor;updateToolApproval(copy,row,p.decision,row.opinion,actor,now)
       const a=get(m.assets,row.assetId,'工具实物')
       if(p.decision==='APPROVED'){
         if(row.loanId){const loan=get(m.loans,row.loanId,'借用单'),line=loan.lines.find(l=>l.assetId===a.id);line.disposed=(line.disposed||0)+row.quantity;if(loan.lines.every(l=>outstanding(l)===0))loan.status='CLOSED'}
@@ -284,13 +295,22 @@ export function applyToolCommand(state,input,{now=new Date().toISOString(),hardw
   }
   synchronize(copy);audit(type,JSON.stringify(p));m.commands.push({id:next(m.commands),requestId,signature,result:structuredClone(result),at:now})
   validateToolManagement(copy)
-  state.toolManagement=copy.toolManagement;state.tools=copy.tools;state.toolRequirements=copy.toolRequirements
+  state.toolManagement=copy.toolManagement;state.tools=copy.tools;state.toolRequirements=copy.toolRequirements;state.approvalRecords=copy.approvalRecords
   return result
 }
 
 export function validateToolManagement(state){
   const m=state.toolManagement
   if(!m||m.version!==1)fail('工具管理数据版本无效')
+  if(!Array.isArray(state.approvalRecords))fail('审核记录集合无效')
+  for(const approval of state.approvalRecords){
+    if(!Number.isSafeInteger(approval.id)||approval.id<1||typeof approval.businessType!=='string'||!Number.isSafeInteger(approval.businessId)||approval.businessId<1||!['PENDING','APPROVED','REJECTED'].includes(approval.approvalStatus))fail('审核记录格式无效')
+    if(approval.businessType==='TOOL_DISPOSAL'){
+      const disposal=m.disposals.find(r=>r.id===approval.businessId);if(!disposal)fail('工具审核记录缺少业务单据')
+      if(disposal.status!==approval.approvalStatus)fail('工具审核状态与遗失报废单不一致')
+    }
+    if(approval.approvalStatus!=='PENDING'&&!approval.approvedAt)fail('已处理审核记录缺少处理时间')
+  }
   for(const key of lists){if(!Array.isArray(m[key])||m[key].length>50000)fail(`工具管理${key}格式无效`);const ids=m[key].map(r=>r?.id);if(ids.some(id=>!Number.isSafeInteger(id)||id<1)||new Set(ids).size!==ids.length)fail(`工具管理${key}编号无效`)}
   for(const key of ['warehouses','categories','kits','devices']){
     for(const row of m[key]){text(row.code,'编码',64);text(row.name,'名称',80)}

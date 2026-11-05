@@ -31,6 +31,12 @@ try{
  const parallel=await Promise.all([1,2].map(i=>post('/api/tools/commands',{requestId:`race-${i}`,revision,type:'BORROW',payload:request.payload,actor:'并发经办'})))
  assert.deepEqual(parallel.map(r=>r.status).sort(),[200,409]);revision=Math.max(...parallel.map(r=>r.data.revision||0))
  const active=(await db.read()).snapshot.data.toolManagement.loans.find(l=>l.status==='OPEN');await run('RETURN',{loanId:active.id,assetId:a.id,quantity:1,returner:'借用乙'})
+ const disposal=await run('DISPOSAL_REQUEST',{assetId:a.id,quantity:1,kind:'LOST',reason:'数据库审核记录测试'})
+ let approvals=await db.pool.query(`SELECT business_type,business_id,approval_status,approval_opinion,approved_at FROM "${schema}"."approval_record" WHERE business_type='TOOL_DISPOSAL' AND business_id=$1`,[disposal.id])
+ assert.equal(approvals.rows.length,1);assert.equal(approvals.rows[0].approval_status,'PENDING');assert.equal(approvals.rows[0].approval_opinion,'')
+ await run('DISPOSAL_REVIEW',{id:disposal.id,decision:'APPROVED',opinion:'审核确认遗失'},'审核丁')
+ approvals=await db.pool.query(`SELECT approval_status,approval_opinion,approved_at FROM "${schema}"."approval_record" WHERE business_type='TOOL_DISPOSAL' AND business_id=$1`,[disposal.id])
+ assert.equal(approvals.rows[0].approval_status,'APPROVED');assert.equal(approvals.rows[0].approval_opinion,'审核确认遗失');assert.ok(approvals.rows[0].approved_at)
  const device=await run('DEVICE_SAVE',{code:'CAB',name:'测试柜',kind:'CABINET',warehouseId:w.id})
  const event={requestId:'hardware-1',actor:'设备网关',payload:{deviceId:device.id,eventId:'hw-1',eventType:'HEARTBEAT'}}
  delete process.env.TOOL_DEVICE_TOKEN
@@ -49,7 +55,7 @@ try{
  assert.equal(exportDemoSnapshot(reopened.snapshot.data).data.toolManagement.assets.length,1)
  const raw=await db.pool.query(`SELECT payload->'appState'->'toolManagement' AS tools FROM "${schema}".application_state WHERE singleton`)
  assert.equal(raw.rows[0].tools.assets.length,1,'tool module is persisted in PostgreSQL, not local storage')
- console.log(JSON.stringify({passed:true,checks:['PostgreSQL roundtrip and restart','HTTP commands and low-stock alerts','borrow/return quantity updates shared tool table','idempotent retries and payload mismatch','optimistic concurrent-write guard','cross-origin write rejection','device token required','real heartbeat provenance','invalid command rollback','invalid restore rejection','existing JSONB state persistence']},null,2))
+ console.log(JSON.stringify({passed:true,checks:['PostgreSQL roundtrip and restart','HTTP commands and low-stock alerts','borrow/return quantity updates shared tool table','tool disposal approval persisted in approval_record','idempotent retries and payload mismatch','optimistic concurrent-write guard','cross-origin write rejection','device token required','real heartbeat provenance','invalid command rollback','invalid restore rejection','existing JSONB state persistence']},null,2))
 }finally{
  if(priorToken===undefined)delete process.env.TOOL_DEVICE_TOKEN;else process.env.TOOL_DEVICE_TOKEN=priorToken
  if(server)await new Promise(resolve=>server.close(resolve))
