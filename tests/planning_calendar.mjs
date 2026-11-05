@@ -4,6 +4,7 @@ import { addPlan, runAutoSchedule, publishSchedule, submitPlan, updatePlan, dele
 import { commitImport, parseCsv, templateCsv, validateImport } from '../src/core/plan-import.js'
 import { confirmedExit, dateKey, monthDays, planningTasks, plansInMonth, shiftMonth, tasksOnDay } from '../src/core/planning-view.js'
 import { demoPlanningPage } from '../src/roles/planning/pages/demo-planning.js'
+import { planMaintenanceActions } from '../src/shared/plan-maintenance.js'
 
 const state = createState()
 assert.equal(monthDays('2026-02').length, 35)
@@ -52,6 +53,10 @@ state.selectedVehicleRepairId = id
 assert.ok(publishSchedule(state))
 assert.ok(confirmedExit(state, id))
 assert.equal(planningTasks(state, id)[0].planKind, 'formal')
+const generatedPlanActions = planMaintenanceActions(state, id)
+assert.match(generatedPlanActions, /data-plan-delete="\d+"/)
+assert.doesNotMatch(generatedPlanActions, /data-plan-delete="\d+"[^>]*disabled/)
+assert.match(generatedPlanActions, /当前不能直接修改或删除/)
 const currentRows = planningTasks(state, id)
 state.schedules.push({ ...currentRows[0], id: 99001, versionId: 99001, plannedEndAt: '2027-12-31T23:59:00' })
 assert.equal(planningTasks(state, id).length, currentRows.length, '历史版本任务不应出现在当前日历')

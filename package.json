@@ -8,10 +8,12 @@
   },
   "scripts": {
     "db:init": "node scripts/database.mjs init",
+    "db:init-monthly-plan": "node scripts/init-monthly-plan.mjs",
     "db:check": "node scripts/database.mjs check",
     "db:schema": "node scripts/generate-schema.mjs",
     "test:db-init": "node tests/database_init.mjs",
     "test:planning": "node tests/planning_calendar.mjs",
+    "test:monthly-schedule-approval": "node tests/monthly_schedule_approval.mjs",
     "test:workshop-calendar": "node tests/workshop_calendar.mjs",
     "db:seed-workshop-calendar": "node scripts/seed-workshop-calendar.mjs",
     "test:planning-import": "node tests/planning_import.mjs",

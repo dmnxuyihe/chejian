@@ -5,6 +5,7 @@ import { simulatePc1, pc1Preflight, pc1PreviewIssues, movePc1Task, togglePc1Lock
 import { exportDemoSnapshot, parseDemoSnapshot } from '../src/core/demo-persistence.js'
 import { confirmedExit, planningTasks } from '../src/core/planning-view.js'
 import { formatLocalDateTime } from '../src/core/derived.js'
+import { processPlanFlow } from '../src/core/planning-json-workflow.js'
 
 const fixture = () => { const state = createState(); const { ids } = commitImport(state, parseCsv(templateCsv)); return { state, ids } }
 const deadline = '2026-11-15T18:00:00'
@@ -34,17 +35,19 @@ function verify(condition, message) { assert.ok(condition, message); assertions+
   assert.deepEqual(formal(state), formal(before), 'recompute does not change the formal state')
   state.pc1SchedulePreview = rerun.preview
   const accepted = confirmPc1Preview(state)
-  verify(accepted.ok && accepted.dispatches === 4, 'confirmation publishes four car/team dispatches')
+  verify(accepted.ok && accepted.approvalFlows === 2 && accepted.dispatches === 0, 'confirmation creates two approval flows without early dispatch')
   verify(!state.pc1SchedulePreview, 'confirmation clears the preview')
-  verify(ids.every(id => confirmedExit(state,id)), 'confirmed schedules create exit markers')
+  verify(ids.every(id => !confirmedExit(state,id)), 'unapproved schedules do not create formal exit markers')
   verify(state.schedules.length === 60, 'old vehicle and its tasks are preserved')
+  for(const id of ids){const flow=state.planApprovalFlows.find(row=>row.entityType==='MONTHLY'&&row.entityId===id&&row.status==='SUBMITTED');verify(processPlanFlow(state,flow.id,'REVIEW','科长审核').ok,'section review succeeds');verify(processPlanFlow(state,flow.id,'PUBLISH','领导审批发布').ok,'deput approval publishes schedule')}
+  verify(ids.every(id => confirmedExit(state,id)), 'approved schedules create exit markers')
   verify(state.pc1Dispatches.every(row => row.employeeIds.length && row.scheduleTaskIds.length && Array.isArray(row.materials)), 'dispatches carry actual task/person/supply lists')
   exportDemoSnapshot(state)
   const repeated = simulatePc1(state,ids,deadline)
   verify(repeated.ok && !repeated.issues.length, repeated.issues.join('\n'))
   state.pc1SchedulePreview = repeated.preview
   verify(confirmPc1Preview(state).ok, 'a second confirmation is a new version')
-  verify(state.scheduleVersions.some(row => row.vehicleRepairId === ids[0] && row.status === 'ARCHIVED'), 'previous publication is archived')
+  verify(state.scheduleVersions.some(row => row.vehicleRepairId === ids[0] && row.status === 'PUBLISHED'), 'previous publication remains active until the new draft is approved')
   verify(planningTasks(state,ids[0]).length === 20, 'history does not duplicate current tasks')
   exportDemoSnapshot(state)
 }
@@ -97,4 +100,4 @@ for (const [name, change, expected] of [
   verify(!recovered.issues.length,'unlocking allows a feasible recomputation')
 }
 
-console.log(JSON.stringify({passed:true, assertions, checks:['isolated two-car simulation','full resources and explicit calendar','drag/lock/recompute','deadline and stale-preview guards','atomic confirmation and dispatch','history and cancellation','snapshot restore']},null,2))
+console.log(JSON.stringify({passed:true, assertions, checks:['isolated two-car simulation','full resources and explicit calendar','drag/lock/recompute','deadline and stale-preview guards','confirmation and approval-gated dispatch','history and cancellation','snapshot restore']},null,2))

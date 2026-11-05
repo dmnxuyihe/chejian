@@ -9,9 +9,10 @@ import { commitImport, parseCsv, templateCsv } from '../../../core/plan-import.j
 import { exportDemoSnapshot } from '../../../core/demo-persistence.js'
 import { renderTaskDetails, openTaskDetails } from '../../../shared/task-details.js'
 import { renderVehicleResources, mountResourceLists } from '../../../shared/resource-lists.js'
+import { planMaintenanceActions, mountPlanMaintenance } from '../../../shared/plan-maintenance.js'
 
 const DAY = 86400000
-const view = { initialized: false, month: '', ids: [], deadline: '', showPreflight: false, message: '', dayWidth: 192, timelineVehicle: '', taskVehicleId: null, taskId: null, taskMessage: '', inspectorOpen: true }
+const view = { initialized: false, month: '', ids: [], deadline: '', showPreflight: false, message: '', dayWidth: 192, timelineVehicle: '', taskVehicleId: null, taskId: null, taskMessage: '', inspectorOpen: true, publishedVehicleId: null }
 const equalIds = (a,b) => [...a].sort((x,y) => x-y).join(',') === [...b].sort((x,y) => x-y).join(',')
 const localInput = value => String(value || '').slice(0,16)
 
@@ -35,12 +36,23 @@ function defaultDeadline(state) {
   return formatLocalDateTime(latest)
 }
 
+const vehicleStage=row=>({SUBMITTED:'待审核',REVIEWED:'待审批发布',PUBLISHED:'已发布',REJECTED:'已驳回',REVISING:'待修改'})[row.approvalStatus]||(row.currentVersionId?'已排程':'未模拟')
+
 function selectionCalendar(state) {
   return `<div class="pc1-plan-calendar" role="grid" aria-label="选择月度检修车辆">${['一','二','三','四','五','六','日'].map(day => `<div class="pc1-calendar-weekday">周${day}</div>`).join('')}${monthDays(view.month).map(day => {
     const entries = state.vehicleRepairs.filter(row => dateKey(row.plannedEntryAt) === day && !['CANCELLED','CANCELED'].includes(row.status))
     const exits = state.vehicleRepairs.filter(row => dateKey(confirmedExit(state,row.id)) === day)
-    return `<div class="pc1-selection-day ${day.startsWith(view.month) ? '' : 'is-outside'}"><strong>${Number(day.slice(-2))}</strong>${entries.map(row => `<label class="pc1-calendar-vehicle ${view.ids.includes(row.id) ? 'is-selected' : ''}" title="计划入段：${esc(row.locomotiveNo)}${canPlanVehicle(state,row) ? '' : '；已有执行记录，不能重排'}"><input type="checkbox" data-pc1-select-vehicle="${row.id}" ${view.ids.includes(row.id) ? 'checked' : ''} ${canPlanVehicle(state,row) || view.ids.includes(row.id) ? '' : 'disabled'}><span>${esc(row.locomotiveNo)}${canPlanVehicle(state,row) ? '' : '<small>不可重排</small>'}</span></label>`).join('')}${exits.map(row => `<span class="pc1-calendar-exit">出段 · ${esc(row.locomotiveNo)}</span>`).join('')}</div>`
+    return `<div class="pc1-selection-day ${day.startsWith(view.month) ? '' : 'is-outside'}"><strong>${Number(day.slice(-2))}</strong>${entries.map(row => row.approvalStatus==='PUBLISHED'?`<button type="button" class="pc1-calendar-vehicle pc1-calendar-published ${view.publishedVehicleId===row.id?'is-selected':''}" data-pc1-view-published="${row.id}" title="查看${esc(row.locomotiveNo)}当前正式排程"><span>${esc(row.locomotiveNo)}<small>已发布 · 点击查看</small></span></button>`:`<label class="pc1-calendar-vehicle ${view.ids.includes(row.id) ? 'is-selected' : ''}" title="计划入段：${esc(row.locomotiveNo)}；当前状态：${vehicleStage(row)}${canPlanVehicle(state,row) ? '' : '；当前状态不能排程'}"><input type="checkbox" data-pc1-select-vehicle="${row.id}" ${view.ids.includes(row.id) ? 'checked' : ''} ${canPlanVehicle(state,row) || view.ids.includes(row.id) ? '' : 'disabled'}><span>${esc(row.locomotiveNo)}<small>${vehicleStage(row)}</small></span></label>`).join('')}${exits.map(row => `<span class="pc1-calendar-exit">出段 · ${esc(row.locomotiveNo)}</span>`).join('')}</div>`
   }).join('')}</div>`
+}
+
+function publishedVehiclePanel(state) {
+  const vehicle=state.vehicleRepairs.find(row=>row.id===view.publishedVehicleId)
+  if(!vehicle)return''
+  const version=state.scheduleVersions.find(row=>row.id===vehicle.currentVersionId)
+  const rows=state.schedules.filter(row=>row.vehicleRepairId===vehicle.id&&row.versionId===vehicle.currentVersionId&&row.status!=='CANCELLED').sort((a,b)=>a.plannedStartAt.localeCompare(b.plannedStartAt))
+  const actions=planMaintenanceActions(state,vehicle.id,{showHelp:false}).replace('查看排程计划','查看目前排程').replace('申请调整','申请重排')
+  return `<aside class="card pc1-published-panel"><div class="desk-panel-head"><div><span class="plan-status">已发布</span><h2>${esc(vehicle.locomotiveNo)}</h2><p>当前正式排程 V${version?.versionNo||1}</p></div></div><dl class="pc1-published-summary"><div><dt>计划入段</dt><dd>${esc(fmtFullDateTime(vehicle.plannedEntryAt))}</dd></div><div><dt>预计出段</dt><dd>${esc(fmtFullDateTime(confirmedExit(state,vehicle.id)||vehicle.plannedExitAt))}</dd></div><div><dt>排程任务</dt><dd>${rows.length} 项</dd></div><div><dt>发布时间</dt><dd>${esc(fmtFullDateTime(version?.publishedAt))}</dd></div></dl><div class="table-actions pc1-published-actions">${actions}</div><div class="table-wrap"><table><thead><tr><th>工序</th><th>开始</th><th>结束</th></tr></thead><tbody>${rows.slice(0,8).map(row=>`<tr><td>${esc(state.tasks.find(task=>task.id===row.taskId)?.name||'工序')}</td><td>${esc(fmtFullDateTime(row.plannedStartAt))}</td><td>${esc(fmtFullDateTime(row.plannedEndAt))}</td></tr>`).join('')||'<tr><td colspan="3" class="empty">暂无正式排程任务</td></tr>'}</tbody></table></div></aside>`
 }
 
 function resourceSummary(report) {
@@ -109,13 +121,15 @@ function editTask(ctx, id) {
   } })
 }
 
-export async function saveConfirmedPc1(ctx) {
-  const next = structuredClone(ctx.state), result = confirmPc1Preview(next)
+export async function saveConfirmedPc1(ctx,submission={}) {
+  const next = structuredClone(ctx.state), result = confirmPc1Preview(next,submission)
   if (!result.ok) { toast('暂不能确认', result.issues[0], 'warning'); return false }
   const saved = await ctx.demoPersistence.restore(JSON.stringify(exportDemoSnapshot(next)))
   if (!saved.ok) { toast('确认未保存', saved.message, 'warning'); return false }
-  view.message = `已确认${result.vehicleIds.length}辆车、${result.schedules}项任务，并生成${result.dispatches}份班组清单。`
-  ctx.rerender(false); toast('正式排程已保存', view.message)
+  const missing=result.vehicleIds.filter(id=>!ctx.state.planApprovalFlows.some(flow=>flow.entityType==='MONTHLY'&&flow.entityId===id&&flow.status==='SUBMITTED'))
+  if(missing.length){toast('审批记录保存校验失败','数据库返回后未找到待审核记录，请勿重复操作并联系管理员。','warning');return false}
+  view.message = `已确认${result.vehicleIds.length}辆车、${result.schedules}项任务，并提交${result.approvalFlows}条月度计划审核。`
+  ctx.rerender(false); toast('排程已提交审核', view.message)
   return true
 }
 
@@ -220,20 +234,21 @@ export const pc1PlanningPage = {
     const simulate = `<button type="button" class="btn ${preview && !issues.length ? '' : 'btn-primary'}" data-pc1-simulate data-run-schedule ${selected.length ? '' : 'disabled'}>${actionIcon(preview ? 'reset' : 'simulate',22)}${preview ? '重新模拟排程' : '生成模拟排程'}</button>`
     const saveStatus = `<div class="pc1-save-status" role="status" data-pc1-save-status>${esc(ctx.demoPersistence?.status.message || '')}</div>`
     const settings = preview ? `<section class="card pc1-overall-settings" aria-label="整体排程方案">
-      <div class="pc1-plan-strip"><div class="pc1-plan-heading"><h2>模拟方案</h2><span class="plan-status ${!issues.length?'is-scheduled':''}">${issues.length?'待调整':'可发布'}</span><small>${selected.length}辆车 · ${preview.schedules.length}项任务</small></div>${deadline}<div class="pc1-plan-actions">${simulate}<button type="button" class="btn btn-primary" data-pc1-confirm data-publish ${issues.length?'disabled aria-describedby="pc1-plan-validation"':''}>${actionIcon('publish',22)}确认并发布</button></div></div>
+      <div class="pc1-plan-strip"><div class="pc1-plan-heading"><h2>模拟方案</h2><span class="plan-status ${!issues.length?'is-scheduled':''}">${issues.length?'待调整':'模拟完成 · 待确认'}</span><small>${selected.length}辆车 · ${preview.schedules.length}项任务</small></div>${deadline}<div class="pc1-plan-actions">${simulate}<button type="button" class="btn btn-primary" data-pc1-confirm data-publish ${issues.length?'disabled aria-describedby="pc1-plan-validation"':''}>${actionIcon('publish',22)}确认并提交审核</button></div></div>
       <div class="pc1-plan-meta"><details class="pc1-plan-conditions" ${view.showPreflight && check && !check.ok?'open':''}><summary>车辆与资源条件</summary><div class="pc1-plan-condition-body"><div class="desk-selected">${selected.map(row=>`<div class="desk-car"><div><strong>${esc(row.locomotiveNo)}</strong><small>${esc(dateKey(row.plannedEntryAt))} 入段</small></div></div>`).join('')}</div>${preflight}</div></details><div data-pc1-preview-status id="pc1-plan-validation" class="pc1-plan-validation ${issues.length?'resource-alert':'resource-ok'}">${issues.length?`<details open><summary>${issues.length}项待处理，校验通过后可发布</summary><ul>${issues.map(issue=>`<li>${esc(issue)}</li>`).join('')}</ul></details>`:`${icon('check',15)}人员、工具、物料与时间约束已通过`}</div><button type="button" class="text-action desk-cancel" data-pc1-cancel>取消模拟</button></div>${saveStatus}</section>` : `<section class="card desk-settings"><div class="desk-panel-head"><h2>本次检修安排</h2><span class="plan-status">未模拟</span></div><div class="desk-selected"><div class="desk-field-label">已选车辆 <b>${selected.length}</b></div>${selected.map(row=>`<div class="desk-car">${ctx.demo?'':`<span class="desk-car-icon">${locomotiveDrawing()}</span>`}<div><strong>${esc(row.locomotiveNo)}</strong><small>${esc(dateKey(row.plannedEntryAt))} 入段</small></div></div>`).join('')||'<p class="desk-placeholder">请先在日历中勾选车辆。</p>'}</div>${deadline}${preflight}<div class="desk-primary-actions">${simulate}</div><p class="desk-note">仅排构架与轮驱流程；模拟不会替换正式排程。</p>${saveStatus}</section>`
     return `<div class="pc1-workspace" data-pc1-planning>
       ${pageHeader('检修排程',ctx.demo?'':'先生成模拟方案，调整并校验后再正式发布。', '<a class="text-action" href="#/scheduling/gantt">班组下发清单 ↗</a>')}
       ${view.message && !preview ? `<p class="notice notice-info" role="status" data-pc1-message>${esc(view.message)}</p>` : ''}
       ${preview ? settings : ''}
       <div class="pc1-desk ${preview ? 'has-preview' : ''} ${preview && !view.inspectorOpen?'is-inspector-closed':''}"><div class="pc1-desk-main">${preview ? simulator : calendar}${preview ? `<details class="pc1-calendar-disclosure"><summary>修改本次选车</summary>${calendar}</details>` : ''}</div>
-      ${preview ? renderTaskInspector(state, preview) : settings}</div>
+      ${preview ? renderTaskInspector(state, preview) : view.publishedVehicleId ? publishedVehiclePanel(state) : settings}</div>
       ${!ctx.demo && selected.length ? `<details class="pc1-resource-disclosure"><summary>查看单车资源明细与库存</summary><section class="card"><div class="card-title-row"><h2>单车资源明细</h2><select class="select" data-pc1-resource-car aria-label="资源明细车辆">${selected.map(row => `<option value="${row.id}" ${row.id === state.selectedVehicleRepairId ? 'selected' : ''}>${esc(row.locomotiveNo)}</option>`).join('')}</select></div>${renderVehicleResources(state, selected.some(row => row.id === state.selectedVehicleRepairId) ? state.selectedVehicleRepairId : selected[0].id)}</section></details>` : ''}
       </div>`
   },
   mount(ctx) {
     document.querySelector('[data-pc1-plan-month]')?.addEventListener('change', event => { if (event.target.validity.valid && /^\d{4}-\d{2}$/.test(event.target.value)) { view.month = event.target.value; ctx.rerender(false) } })
     document.querySelectorAll('[data-pc1-select-vehicle]').forEach(input => input.addEventListener('change', () => { const id = Number(input.dataset.pc1SelectVehicle); view.ids = input.checked ? [...new Set([...view.ids,id])] : view.ids.filter(value => value !== id); if (!ctx.state.pc1SchedulePreview) view.deadline = defaultDeadline(ctx.state); ctx.rerender(false) }))
+    document.querySelectorAll('[data-pc1-view-published]').forEach(button=>button.addEventListener('click',()=>{view.publishedVehicleId=Number(button.dataset.pc1ViewPublished);ctx.state.selectedVehicleRepairId=view.publishedVehicleId;ctx.rerender(false)}))
     document.querySelector('[data-pc1-deadline]')?.addEventListener('change', event => { view.deadline = event.target.value; ctx.rerender(false) })
     document.querySelector('[data-pc1-demo-plans]')?.addEventListener('click', () => {
       commitImport(ctx.state,parseCsv(templateCsv))
@@ -248,7 +263,7 @@ export const pc1PlanningPage = {
       if (!result.ok) { view.message = result.issues.join('；'); ctx.rerender(false); return }
       ctx.state.pc1SchedulePreview = result.preview; view.taskMessage=''; view.message = result.issues.length ? '模拟已生成，请处理下列约束问题。' : '模拟完成，可拖动或精确调整任务，确认前不会改动正式排程。'; ctx.rerender()
     })
-    document.querySelector('[data-pc1-confirm]')?.addEventListener('click', () => { openModal({ title: '确认发布模拟方案', body: '<p>确认后将保存本次任务时间及人员、设备、配件安排，并生成班组任务和资源清单。</p>', confirmText: '确认发布', onConfirm: () => saveConfirmedPc1(ctx) }) })
+    document.querySelector('[data-pc1-confirm]')?.addEventListener('click', () => {const selected=ctx.state.vehicleRepairs.filter(row=>view.ids.includes(row.id)),month=String(selected[0]?.plannedEntryAt||view.month).slice(0,7);openModal({ title: '月度检修计划审核提报', wide:true, body: `<div class="notice notice-info"><strong>已完成排程校验</strong><span>本次共${selected.length}辆机车、${ctx.state.pc1SchedulePreview?.schedules.length||0}项工序。确认后冻结排程并提交主管科长审核。</span></div><div class="pc-plan-manual-grid" style="margin-top:16px"><label class="is-wide">计划名称 *<input class="input" maxlength="100" value="${esc(`${month}月度检修计划`)}" data-approval-plan-name></label><label>计划月份<input class="input" value="${esc(month)}" disabled></label><label>提报部门<input class="input" maxlength="100" value="计划编制" data-approval-department></label><label class="is-wide">提报说明 *<textarea class="textarea" maxlength="500" data-approval-note>排程编制及资源校验已完成，申请主管科长审核。</textarea></label></div><p role="alert" class="pc-error-text" data-approval-error></p>`, confirmText: '确认并提交审核', async onConfirm(wrap){const planName=wrap.querySelector('[data-approval-plan-name]').value.trim(),note=wrap.querySelector('[data-approval-note]').value.trim(),submitterDepartment=wrap.querySelector('[data-approval-department]').value.trim();if(!planName||!note){wrap.querySelector('[data-approval-error]').textContent='请填写计划名称和提报说明。';return false}return saveConfirmedPc1(ctx,{planName,note,submitterDepartment})} }) })
     document.querySelector('[data-pc1-cancel]')?.addEventListener('click', () => { delete ctx.state.pc1SchedulePreview; view.message = '已取消模拟，原正式排程及资源安排未改变。'; ctx.rerender() })
     document.querySelector('[data-pc1-timeline-vehicle]')?.addEventListener('change', event => { view.timelineVehicle = event.target.value; view.taskMessage=''; refreshTimeline(ctx,false,'[data-pc1-timeline-vehicle]') })
     document.querySelector('[data-pc1-day-width]')?.addEventListener('change', event => {
@@ -262,6 +277,7 @@ export const pc1PlanningPage = {
     })
     document.querySelector('[data-pc1-resource-car]')?.addEventListener('change', event => { ctx.state.selectedVehicleRepairId = Number(event.target.value); ctx.rerender(false) })
     mountTimeline(ctx)
+    mountPlanMaintenance(ctx,async()=>{view.publishedVehicleId=null;ctx.rerender(false)})
     mountResourceLists(ctx,ctx.state.planningView)
   },
 }

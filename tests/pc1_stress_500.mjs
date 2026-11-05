@@ -6,6 +6,7 @@ import { simulatePc1, pc1Preflight, pc1PreviewIssues, movePc1Task, confirmPc1Pre
 import { exportDemoSnapshot, parseDemoSnapshot } from '../src/core/demo-persistence.js'
 import { confirmedExit, planningTasks } from '../src/core/planning-view.js'
 import { buildResourceReport } from '../src/core/resource-report.js'
+import { processPlanFlow } from '../src/core/planning-json-workflow.js'
 
 const DAY = 86400000
 let assertions = 0
@@ -50,7 +51,9 @@ for (let cycle = 1; cycle <= 500; cycle++) {
   check(result.ok,'confirm atomically')
   check(!restored.pc1SchedulePreview,'clear adopted preview')
   check(ids.every(id => planningTasks(restored,id).length === 20),'per-car current version task count')
-  check(ids.every(id => confirmedExit(restored,id)),'formal exits generated')
+  check(ids.every(id => !confirmedExit(restored,id)),'formal exits wait for approval')
+  for(const id of ids){const flow=restored.planApprovalFlows.find(row=>row.entityType==='MONTHLY'&&row.entityId===id&&row.status==='SUBMITTED');check(processPlanFlow(restored,flow.id,'REVIEW','科长审核').ok,'section review');check(processPlanFlow(restored,flow.id,'PUBLISH','副段长发布').ok,'deput publish')}
+  check(ids.every(id => confirmedExit(restored,id)),'formal exits generated after approval')
   check(restored.pc1Dispatches.length === 4,'team dispatches')
   check(JSON.stringify(restored.schedules.filter(row => row.vehicleRepairId === 1)) === oldCar,'unselected vehicle unchanged')
   check(buildResourceReport(restored,ids).ready,'published resources remain feasible')

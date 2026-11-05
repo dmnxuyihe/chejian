@@ -3,6 +3,7 @@ import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { projectRoot } from './config.js'
 import { createPlanningService } from './planning.js'
+import { parseTemporaryRepairFile, temporaryRepairTemplateCsv, parseComponentTemporaryFile, componentTemporaryTemplateCsv, parseComponentMonthlyFile, componentMonthlyTemplateCsv } from './temporary-repair-import.js'
 
 function json(res, status, data) {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
@@ -33,6 +34,23 @@ export function createHandler(database) {
           if (req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return json(res, 403, { message: '拒绝跨站写入' })
           return json(res, 200, await database.submitMaintenanceRecord(await body(req)))
         }
+        if (url.pathname === '/api/temporary-repair/import/template.csv' && req.method === 'GET') {
+          res.writeHead(200, { 'Content-Type':'text/csv; charset=utf-8', 'Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent('整车临修计划导入模板.csv')}`, 'Cache-Control':'no-store' })
+          return res.end(temporaryRepairTemplateCsv)
+        }
+        if (url.pathname === '/api/temporary-repair/import/preview' && req.method === 'POST') {
+          if (req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return json(res, 403, { message:'拒绝跨站写入' })
+          return json(res, 200, { rows:parseTemporaryRepairFile(await body(req)) })
+        }
+        if (url.pathname === '/api/component-temporary/import/template.csv' && req.method === 'GET') {
+          res.writeHead(200, { 'Content-Type':'text/csv; charset=utf-8', 'Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent('配件临修计划导入模板.csv')}`, 'Cache-Control':'no-store' });return res.end(componentTemporaryTemplateCsv)
+        }
+        if (url.pathname === '/api/component-temporary/import/preview' && req.method === 'POST') {
+          if (req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return json(res,403,{message:'拒绝跨站写入'})
+          return json(res,200,{rows:parseComponentTemporaryFile(await body(req))})
+        }
+        if(url.pathname==='/api/component-monthly/import/template.csv'&&req.method==='GET'){res.writeHead(200,{'Content-Type':'text/csv; charset=utf-8','Content-Disposition':`attachment; filename*=UTF-8''${encodeURIComponent('配件月计划导入模板.csv')}`,'Cache-Control':'no-store'});return res.end(componentMonthlyTemplateCsv)}
+        if(url.pathname==='/api/component-monthly/import/preview'&&req.method==='POST'){if(req.headers.origin&&new URL(req.headers.origin).host!==req.headers.host)return json(res,403,{message:'拒绝跨站写入'});return json(res,200,{rows:parseComponentMonthlyFile(await body(req))})}
         if (url.pathname === '/api/pc1/records' && req.method === 'GET') {
           const result = await database.read(), id = url.searchParams.get('vehicleRepairId')
           return json(res, 200, { records: result.snapshot.data.maintenanceRecords.filter(row => !id || row.vehicleRepairId === Number(id)), revision: result.revision })
@@ -63,12 +81,19 @@ export function createHandler(database) {
             res.setHeader('Set-Cookie', `pc1_import_session=${sessionId}; Path=/; HttpOnly; SameSite=Strict; Max-Age=3600${req.socket.encrypted ? '; Secure' : ''}`)
           }
           if (url.pathname === '/api/planning/lookups' && req.method === 'GET') return json(res, 200, await planning.lookups())
+          if (url.pathname === '/api/planning/annual' && req.method === 'GET') {
+            const year = Number(url.searchParams.get('year'))
+            if (!Number.isInteger(year) || year < 1900 || year > 2199) return json(res, 400, { message: '请选择有效年度' })
+            for (const key of ['modelId', 'programId']) if (url.searchParams.get(key) && !/^\d+$/.test(url.searchParams.get(key))) return json(res, 400, { message: '筛选条件无效' })
+            const depot = (url.searchParams.get('depot') || '').slice(0, 64)
+            return json(res, 200, await planning.annual({ year, depot, modelId: url.searchParams.get('modelId'), programId: url.searchParams.get('programId') }))
+          }
           if (url.pathname === '/api/planning/plans' && req.method === 'GET') {
             const from = url.searchParams.get('from') || '', to = url.searchParams.get('to') || ''
             if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return json(res, 400, { message: '计划日期范围无效' })
             for (const key of ['modelId', 'programId']) if (url.searchParams.get(key) && !/^\d+$/.test(url.searchParams.get(key))) return json(res, 400, { message: '筛选条件无效' })
             const planSource = url.searchParams.get('planSource') || ''
-            if (planSource && !['ANNUAL', 'MONTHLY'].includes(planSource)) return json(res, 400, { message: '计划来源筛选无效' })
+            if (planSource && !['ANNUAL', 'MONTHLY', 'NON_ANNUAL'].includes(planSource)) return json(res, 400, { message: '计划来源筛选无效' })
             const result = await planning.plans({ from, to, modelId: url.searchParams.get('modelId'), programId: url.searchParams.get('programId'), locomotiveNo: (url.searchParams.get('locomotiveNo') || '').slice(0, 64), planSource })
             return json(res, 200, result)
           }
@@ -112,6 +137,11 @@ export function createHandler(database) {
             const input = await body(req)
             const result = await planning.confirm(sessionId, String(input.previewId || ''))
             return json(res, result.changed ? 409 : 200, result)
+          }
+          const previewRow = url.pathname.match(/^\/api\/planning\/import\/preview\/([^/]+)\/rows\/(\d+)$/)
+          if (previewRow && req.method === 'PATCH') {
+            const input=await body(req)
+            return json(res,200,await planning.updatePreviewRow(sessionId,decodeURIComponent(previewRow[1]),Number(previewRow[2]),input.values))
           }
           const preview = url.pathname.match(/^\/api\/planning\/import\/preview\/([^/]+)$/)
           if (preview && req.method === 'DELETE') return json(res, 200, await planning.cancel(sessionId, decodeURIComponent(preview[1])))

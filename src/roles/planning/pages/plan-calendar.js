@@ -1,6 +1,6 @@
 import { planMaintenanceActions, mountPlanMaintenance } from '../../../shared/plan-maintenance.js'
 import { pageHeader } from '../../../shared/templates.js'
-import { escapeHtml } from '../../../core/ui.js'
+import { escapeHtml, openModal } from '../../../core/ui.js'
 import { renderVehicleResources, renderResourcePreparation, mountResourceLists } from '../../../shared/resource-lists.js'
 import { icon, actionIcon } from '../../../shared/icons.js'
 import { workspaceArt } from '../../../shared/workspace-art.js'
@@ -24,7 +24,7 @@ const monthEnd = month => {
 const view = { month: today().slice(0, 7), day: today(), importType: 'MONTHLY', filter: { modelId: '', programId: '', locomotiveNo: '' }, loading: true, loadedMode: '', rows: [], planRows: [], lookups: { models: [], programs: [] }, busy: false, preview: null, previewFilter: 'all', detail: null, error: '', result: null, manualOpen: false }
 let viewRestored = false
 function rememberView(ctx) {
-  Object.assign(ctx.state.planningView, { month:view.month, day:view.day, importMonth:view.importMonth || view.month, importType:view.importType, annualYear:view.annualYear || view.month.slice(0,4) })
+  Object.assign(ctx.state.planningView, { month:view.month, day:view.day, importMonth:view.month, importType:view.importType, annualYear:view.annualYear || view.month.slice(0,4) })
 }
 
 async function api(path, options = {}) {
@@ -71,6 +71,9 @@ function calendarHtml() {
 }
 
 function statusLabel(vehicle) {
+  const approval = { SUBMITTED: '待审核', REVIEWED: '待审批发布', PUBLISHED: '已发布', REJECTED: '已驳回', REVISING: '待修改' }
+  if (approval[vehicle.approvalStatus]) return approval[vehicle.approvalStatus]
+  if (!vehicle.currentVersionId && ['DRAFT', 'UNSCHEDULED'].includes(vehicle.status)) return '未模拟'
   const names = { UNSCHEDULED: '未排程', SCHEDULED: '已排程', IN_PROGRESS: '检修中', COMPLETED: '已完成', CANCELLED: '已取消', CANCELED: '已取消' }
   return names[vehicle.status] || vehicle.status || '未填写'
 }
@@ -99,7 +102,7 @@ function dayPanel(demo=false) {
 function periodControl() {
   return view.importType === 'ANNUAL'
     ? `<label>年度 <input class="input" type="number" min="1900" max="2199" value="${view.annualYear || view.month.slice(0, 4)}" data-annual-year></label>`
-    : `<label>列表月份 <input class="input" type="month" min="1900-01" max="2199-12" value="${view.importMonth || view.month}" data-import-month></label>`
+    : `<label>列表月份 <input class="input" type="month" min="1900-01" max="2199-12" value="${view.month}" data-import-month></label>`
 }
 
 function previewPanel() {
@@ -115,7 +118,7 @@ function previewPanel() {
     <div class="pc-plan-preview-head"><div><h2 id="pc-preview-title">导入预览 · ${esc(preview.filename || '计划文件')}</h2><p role="status">${period} · 共${preview.total}行，可导入${preview.importable}行，错误${preview.errors}行。预览有效期15分钟，确认前不会写入业务数据。</p></div><button type="button" class="btn" data-cancel-preview>取消预览</button></div>
     ${preview.warnings?.length ? `<p class="pc-plan-warning">${preview.warnings.map(esc).join('；')}</p>` : ''}
     <div class="pc-plan-preview-tools"><div class="pc-plan-filters"><button type="button" class="btn btn-sm ${view.previewFilter === 'all' ? 'is-active' : ''}" data-preview-filter="all">全部 ${preview.total}</button><button type="button" class="btn btn-sm ${view.previewFilter === 'ready' ? 'is-active' : ''}" data-preview-filter="ready">可导入 ${preview.importable}</button><button type="button" class="btn btn-sm ${view.previewFilter === 'errors' ? 'is-active' : ''}" data-preview-filter="errors">错误 ${preview.errors}</button></div>${preview.errors ? `<button type="button" class="btn btn-sm" data-download-errors>下载错误明细</button>` : ''}</div>
-    <div class="pc-plan-preview-table"><table><thead><tr><th>源行</th><th>机车编号</th><th>机型 / 修程</th><th>修次</th><th>计划入段</th><th>配属局 / 段</th><th>公里数</th><th>备注</th><th>错误字段</th><th>错误原因</th></tr></thead><tbody>${rows.map(row => `<tr class="${row.status === 'ready' ? '' : 'has-error'}"><td>${row.line}</td><td>${esc(displayValue(row, '机车编号', row.data.locomotiveNo))}</td><td>${esc(displayValue(row, '机型', row.data.modelName))} / ${esc(displayValue(row, '修程', row.data.repairProgramName))}</td><td>${esc(displayValue(row, '修次', row.data.repairSequence))}</td><td>${esc(displayValue(row, '计划入段日期', row.data.plannedEntryAt))}</td><td>${esc(displayValue(row, '配属局', row.data.ownerBureau))} / ${esc(displayValue(row, '配属段', row.data.ownerDepot))}</td><td>${esc(displayValue(row, '累计走行公里', row.data.mileageKm))}</td><td>${esc(displayValue(row, '备注', row.data.remark))}</td><td>${row.status === 'ready' ? '—' : esc(row.errors.map(error => error.field).join('；'))}</td><td>${row.status === 'ready' ? '通过' : `${esc(row.errors.map(error => error.message).join('；'))}${row.warnings?.map(warning => `<div class="pc-plan-warning">${esc(warning)}</div>`).join('') || ''}`}</td></tr>`).join('') || '<tr><td colspan="10" class="pc-plan-empty">当前筛选没有记录</td></tr>'}</tbody></table></div>
+    <div class="pc-plan-preview-table"><table><thead><tr><th>源行</th><th>机车编号</th><th>机型 / 修程</th><th>修次</th><th>计划入段</th><th>配属局 / 段</th><th>公里数</th><th>备注</th><th>错误字段</th><th>错误原因</th><th>操作</th></tr></thead><tbody>${rows.map(row => `<tr class="${row.status === 'ready' ? '' : 'has-error'}"><td>${row.line}</td><td>${esc(displayValue(row, '机车编号', row.data.locomotiveNo))}</td><td>${esc(displayValue(row, '机型', row.data.modelName))} / ${esc(displayValue(row, '修程', row.data.repairProgramName))}</td><td>${esc(displayValue(row, '修次', row.data.repairSequence))}</td><td>${esc(displayValue(row, '计划入段日期', row.data.plannedEntryAt))}</td><td>${esc(displayValue(row, '配属局', row.data.ownerBureau))} / ${esc(displayValue(row, '配属段', row.data.ownerDepot))}</td><td>${esc(displayValue(row, '累计走行公里', row.data.mileageKm))}</td><td>${esc(displayValue(row, '备注', row.data.remark))}</td><td>${row.status === 'ready' ? '—' : esc(row.errors.map(error => error.field).join('；'))}</td><td>${row.status === 'ready' ? '通过' : `${esc(row.errors.map(error => error.message).join('；'))}${row.warnings?.map(warning => `<div class="pc-plan-warning">${esc(warning)}</div>`).join('') || ''}`}</td><td><button type="button" class="btn btn-sm" data-edit-preview-row="${row.line}">编辑并重新校验</button></td></tr>`).join('') || '<tr><td colspan="11" class="pc-plan-empty">当前筛选没有记录</td></tr>'}</tbody></table></div>
     <div class="pc-plan-preview-footer"><span>单击确认后仅保存通过校验的完整记录；错误行不会写入。</span><button type="button" class="btn btn-primary" data-confirm-import ${!preview.importable || view.busy ? 'disabled' : ''}>${view.busy ? '正在提交…' : `确认导入${preview.importable}条`}</button></div>
   </section>`
 }
@@ -128,7 +131,7 @@ function detailDrawer(state, demo=false) {
   const source = vehicle.planSource === 'ANNUAL' ? '年度计划' : vehicle.planSource === 'MONTHLY' ? '月度计划' : value(vehicle.planSource)
   return `<div class="pc-plan-drawer-backdrop" data-close-drawer><aside class="pc-plan-drawer" role="dialog" aria-modal="true" aria-labelledby="pc-vehicle-detail-title"><div class="pc-plan-drawer-head"><div><span>车辆检修详情</span><h2 id="pc-vehicle-detail-title">${esc(vehicle.locomotiveNo)}</h2></div><button type="button" class="btn" data-close-detail aria-label="关闭车辆详情">关闭</button></div><dl>
     <div><dt>机型</dt><dd>${value(vehicle.modelName)}</dd></div><div><dt>修程</dt><dd>${value(vehicle.repairProgramName)}</dd></div><div><dt>修次</dt><dd>${vehicle.repairSequence == null ? '未填写' : esc(vehicle.repairSequence)}</dd></div><div><dt>状态</dt><dd>${esc(statusLabel(vehicle))}</dd></div><div><dt>配属局</dt><dd>${value(vehicle.ownerBureau)}</dd></div><div><dt>配属段</dt><dd>${value(vehicle.ownerDepot)}</dd></div><div><dt>累计走行公里</dt><dd>${vehicle.mileageKm == null ? '未填写' : `${esc(vehicle.mileageKm)} km`}</dd></div><div><dt>计划入段</dt><dd>${value(vehicle.entryDate)}</dd></div><div><dt>预计出段</dt><dd>${vehicle.confirmedExitDate ? esc(vehicle.confirmedExitDate) : vehicle.versionStatus === 'CURRENT' ? '暂无预计出段' : '尚未正式排程'}</dd></div><div><dt>计划来源</dt><dd>${source}</dd></div><div class="is-wide"><dt>备注</dt><dd>${value(vehicle.remark)}</dd></div>
-    </dl>${demo?'':planMaintenanceActions(state,vehicle.id)}<a class="btn btn-primary" href="#/scheduling/workforce" data-pc1-open-single="${vehicle.id}">查看本车日历、甘特图与检修记录</a>${renderVehicleResources(state, vehicle.id, true)}</aside></div>`
+    </dl>${demo?'':`<div class="table-actions"><a class="btn btn-sm btn-primary" href="#/scheduling/dashboard" data-go-schedule="${vehicle.id}">去排程</a>${planMaintenanceActions(state,vehicle.id,{showHelp:false})}</div>`}<a class="btn" href="#/scheduling/workforce" data-pc1-open-single="${vehicle.id}">查看本车日历、甘特图与检修记录</a>${renderVehicleResources(state, vehicle.id, true)}</aside></div>`
 }
 
 function toolbar(demo=false) {
@@ -181,12 +184,12 @@ async function loadData(mode = 'calendar', revision = null) {
       const result = await api(`/api/planning/calendar?${params}`)
       view.rows = result.vehicles
     } else {
-      const month = view.importMonth || view.month
+      const month = view.month
       const from = view.importType === 'ANNUAL' ? `${view.annualYear || month.slice(0, 4)}-01-01` : `${month}-01`
       const to = view.importType === 'ANNUAL' ? `${view.annualYear || month.slice(0, 4)}-12-31` : monthEnd(month)
-      const params = new URLSearchParams({ from, to, ...view.filter, planSource: view.importType })
+      const params = new URLSearchParams({ from, to, ...view.filter, ...(view.importType === 'ANNUAL' ? { planSource:'ANNUAL' } : {}) })
       const result = await api(`/api/planning/plans?${params}`)
-      view.planRows = result.vehicles
+      view.planRows = view.importType === 'ANNUAL' ? result.vehicles : result.vehicles.filter(row=>row.planSource!=='ANNUAL')
     }
     if(view.detail){
       const id=view.detail.id
@@ -205,18 +208,18 @@ function render(ctx, mode = 'calendar') {
     for (const key of ['month','day','importMonth','annualYear']) if (planningView[key]) view[key] = planningView[key]
     if (['MONTHLY','ANNUAL'].includes(planningView.importType)) view.importType = planningView.importType
   }
-  if(ctx.demo){view.importType='MONTHLY';view.filter={modelId:'',programId:'',locomotiveNo:''}}
+  if(mode==='calendar')sessionStorage.removeItem('planning-import-context')
+  const annualImportMode = mode === 'plans' && sessionStorage.getItem('planning-import-context') === 'ANNUAL'
+  if(ctx.demo){view.filter={modelId:'',programId:'',locomotiveNo:''}}
   rememberView(ctx)
-  const actions = isCalendar || view.preview || view.manualOpen
-    ? (isCalendar && ctx.demo ? `<a class="btn btn-primary" href="#/demo/plans">${actionIcon('upload')}导入月度计划</a>` : '')
-    : `<div class="plan-import-actions">${ctx.demo?'':`<label class="import-type-label"><span class="sr-only">导入类型</span><select class="select" data-import-type aria-label="导入类型"><option value="MONTHLY" ${view.importType === 'MONTHLY' ? 'selected' : ''}>月度计划</option><option value="ANNUAL" ${view.importType === 'ANNUAL' ? 'selected' : ''}>年度计划</option></select></label>`}<button type="button" class="btn btn-primary" data-start-import ${view.busy ? 'disabled' : ''}>${actionIcon('upload')}导入计划文件</button>${ctx.demo?`<a class="text-action" href="/api/planning/import/template.xlsx">${actionIcon('download',24)}下载模板</a>`:''}${ctx.demo?'':'<button type="button" class="btn btn-quiet" data-open-manual>手动新建</button>'}</div>`
-  const title = '检修计划'
-  const description = isCalendar ? '按日期查看车辆入段与排程后的预计出段。' : '从月度计划开始，安排每一辆机车的检修。'
+  view.importType = annualImportMode ? 'ANNUAL' : 'MONTHLY'
+  const actions = `<div class="plan-import-actions"><button type="button" class="btn btn-primary" data-open-import-dialog ${view.busy ? 'disabled' : ''}>${actionIcon('upload')}${annualImportMode?'导入年度计划文件':'导入计划文件'}</button>${annualImportMode?'':'<button type="button" class="btn btn-quiet" data-open-manual-dialog>手动新建</button>'}</div>`
+  const title = annualImportMode ? '年度计划导入' : '月度计划'
+  const description = annualImportMode ? '导入并校验年度检修计划，确认后进入年度计划管理。' : isCalendar ? '按日期查看车辆入段与排程后的预计出段。' : '从月度计划开始，安排每一辆机车的检修。'
   return `<div class="pc-planning pc-plan-page">${pageHeader(title, ctx.demo?'':description, actions)}
-    <input type="file" accept=".xlsx,.xls,.csv" data-plan-file hidden aria-label="选择年度或月度计划文件">
     <p class="pc-plan-message ${view.message?.kind === 'error' ? 'is-error' : view.message?.kind === 'success' ? 'is-success' : ''}" role="status">${esc(view.message?.text || '')}</p>
     ${view.result ? `<section class="card pc-plan-result" role="status"><strong>导入已提交</strong><span>新增${view.result.imported}条，未导入${view.result.notImported}条。</span><button type="button" class="btn btn-sm" data-dismiss-result>关闭结果</button></section>` : ''}
-    <nav class="plan-view-tabs" aria-label="计划查看方式"><a href="#/planning/plans" class="${!isCalendar ? 'active' : ''}" ${!isCalendar ? 'aria-current="page"' : ''}>计划列表</a><a href="#/planning/g2-p2" class="${isCalendar ? 'active' : ''}" ${isCalendar ? 'aria-current="page"' : ''}>月度日历</a></nav>
+    ${annualImportMode?'<nav class="plan-view-tabs plan-switch-tabs" aria-label="年度计划导入"><a href="#/functions/plans/annual-plan">返回年度计划</a><a class="active" aria-current="page">年度计划导入</a></nav>':`<nav class="plan-view-tabs plan-switch-tabs" aria-label="月度计划查看方式"><a href="#/planning/g2-p2" class="${isCalendar ? 'active' : ''}" ${isCalendar ? 'aria-current="page"' : ''}>计划日历</a><a href="#/planning/plans" class="${!isCalendar ? 'active' : ''}" ${!isCalendar ? 'aria-current="page"' : ''}>计划列表</a><a href="#/planning/monthly-stats">交验统计</a></nav>`}
     ${isCalendar ? `${toolbar(ctx.demo)}${mainCalendar(ctx.state,ctx.demo)}${detailDrawer(ctx.state,ctx.demo)}` : `<div class="plan-workspace"><div class="plan-workspace-main">${view.preview ? previewPanel() : view.manualOpen ? manualForm() : plansList()}${detailDrawer(ctx.state,ctx.demo)}</div>${ctx.demo?'':importGuide()}</div>${!ctx.demo && !view.preview && !view.manualOpen ? planFlowDrawing() : ''}${ctx.demo?'':`<details class="pc1-resource-disclosure"><summary>资源准备与演示资料</summary>${renderResourcePreparation(ctx.state, planningView)}</details>`}`}</div>`
 }
 
@@ -254,12 +257,49 @@ async function openVehicle(ctx, id, day) {
   finally { view.detailLoading = false; ctx.rerender(false) }
 }
 
+async function createPreviewFromFile(file) {
+  if (!file) throw new Error('请选择要导入的 Excel 或 CSV 文件')
+  if (file.size > 5 * 1024 * 1024) throw new Error('文件不得超过5MB')
+  const bytes = new Uint8Array(await file.arrayBuffer()); let binary = ''
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000))
+  const preview = await api('/api/planning/import/preview', { method:'POST', body:JSON.stringify({ filename:file.name, contentBase64:btoa(binary), importType:view.importType, year:view.annualYear||view.month.slice(0,4), month:view.month }) })
+  preview.filename = file.name
+  return preview
+}
+
+function showMonthlyPreview(ctx,mode){setTimeout(()=>{if(mode==='plans')ctx.rerender(false);else location.hash='#/functions/plans/plan-import'},0)}
+function openImportDialog(ctx,mode) {
+  const annual=view.importType==='ANNUAL'
+  openModal({title:annual?'导入年度计划文件':'导入月度计划文件',wide:true,body:`<div class="notice notice-info"><strong>${annual?'年度':'月度'}计划导入</strong><span>请选择 XLSX、XLS 或 CSV 文件。系统会先校验并生成预览，确认前不会写入计划。</span></div><div class="field" style="margin-top:16px"><label>计划文件 *</label><input class="input" type="file" accept=".xlsx,.xls,.csv" data-dialog-plan-file></div><p role="alert" class="pc-error-text" data-dialog-plan-error></p>`,confirmText:'上传并校验',async onConfirm(wrap){const error=wrap.querySelector('[data-dialog-plan-error]');try{view.busy=true;view.preview=await createPreviewFromFile(wrap.querySelector('[data-dialog-plan-file]').files?.[0]);view.previewFilter='all';setMessage('文件已校验；请复核预览后确认导入。');showMonthlyPreview(ctx,mode);return true}catch(reason){error.textContent=reason.message;return false}finally{view.busy=false}}})
+}
+
+function openManualDialog(ctx,mode) {
+  openModal({title:'手动新建月度计划',wide:true,body:`<div class="pc-plan-manual-grid"><label>机车编号<input class="input" maxlength="64" data-dialog-loco></label><label>机型<select class="select" data-dialog-model><option value="">请选择机型</option>${view.lookups.models.map(row=>`<option value="${esc(row.name)}">${esc(row.name)}</option>`).join('')}</select></label><label>修程<select class="select" data-dialog-program><option value="">请选择修程</option>${view.lookups.programs.map(row=>`<option value="${esc(row.name)}">${esc(row.name)}</option>`).join('')}</select></label><label>修次（选填）<input class="input" type="number" min="1" data-dialog-sequence></label><label>计划入段日期<input class="input" type="date" data-dialog-date></label><label>配属局（选填）<input class="input" data-dialog-bureau></label><label>配属段（选填）<input class="input" data-dialog-depot></label><label>累计走行公里（选填）<input class="input" type="number" min="0" data-dialog-mileage></label><label class="is-wide">备注（选填）<input class="input" data-dialog-remark></label></div><p role="alert" class="pc-error-text" data-dialog-plan-error></p>`,confirmText:'校验并预览',async onConfirm(wrap){const get=name=>wrap.querySelector(`[data-dialog-${name}]`)?.value||'',fields=['机车编号','机型','修程','修次','计划入段日期','配属局','配属段','累计走行公里','备注'],row=['loco','model','program','sequence','date','bureau','depot','mileage','remark'].map(get),csv=`\uFEFF${[fields,row].map(items=>items.map(item=>`"${String(item).replaceAll('"','""')}"`).join(',')).join('\r\n')}\r\n`,file=new File([csv],'手动新建月度计划.csv',{type:'text/csv'});try{view.busy=true;view.preview=await createPreviewFromFile(file);view.preview.filename='手动新建月度计划';view.previewFilter='all';view.importType='MONTHLY';setMessage('已生成手动录入预览；请复核后确认。');showMonthlyPreview(ctx,mode);return true}catch(reason){wrap.querySelector('[data-dialog-plan-error]').textContent=reason.message;return false}finally{view.busy=false}}})
+}
+
+function openPreviewRowEditor(ctx,line) {
+  const row=view.preview?.rows.find(item=>item.line===Number(line))
+  if(!row)return
+  const raw=row.raw||{},value=(label,key)=>raw[label]??row.data?.[key]??''
+  const input=(label,key,type='text')=>`<label>${label}<input class="input" type="${type}" value="${esc(value(label,key))}" data-preview-value="${key}"></label>`
+  const modelOptions=view.lookups.models.map(model=>`<option value="${esc(model.name)}" ${String(value('机型','modelName'))===String(model.name)?'selected':''}>${esc(model.name)}</option>`).join('')
+  const programOptions=view.lookups.programs.map(program=>`<option value="${esc(program.name)}" data-model-id="${program.modelId}" ${String(value('修程','repairProgramName'))===String(program.name)?'selected':''}>${esc(program.name)}</option>`).join('')
+  openModal({title:`编辑导入预览第${row.line}行`,wide:true,body:`<div class="pc-plan-manual-grid">${input('机车编号','locomotiveNo')}<label>机型<select class="select" data-preview-value="modelName" data-preview-model><option value="">请选择机型</option>${modelOptions}</select></label><label>修程<select class="select" data-preview-value="repairProgramName" data-preview-program><option value="">请选择修程</option>${programOptions}</select></label>${input('修次','repairSequence','number')}${input('计划入段日期','plannedEntryAt','date')}${input('配属局','ownerBureau')}${input('配属段','ownerDepot')}${input('累计走行公里','mileageKm','number')}<label class="is-wide">备注<input class="input" value="${esc(value('备注','remark'))}" data-preview-value="remark" readonly></label></div><p class="pc-help">保存后将重新执行字典匹配、日期、重复计划及数据库冲突校验；备注将自动更新为本次重新校验结果。</p><p role="alert" class="pc-error-text" data-preview-edit-error></p>`,confirmText:'保存并重新校验',async onConfirm(wrap){const values=Object.fromEntries([...wrap.querySelectorAll('[data-preview-value]')].map(element=>[element.dataset.previewValue,element.value]));try{view.preview=await api(`/api/planning/import/preview/${encodeURIComponent(view.preview.id)}/rows/${row.line}`,{method:'PATCH',body:JSON.stringify({values})});const updated=view.preview.rows.find(item=>item.line===row.line);setMessage(updated?.status==='ready'?'修改后重新校验通过。':'已保存修改，当前行仍有错误需要处理。',updated?.status==='ready'?'success':'error');ctx.rerender(false);return true}catch(error){wrap.querySelector('[data-preview-edit-error]').textContent=error.message;return false}}})
+  const model=document.querySelector('[data-preview-model]'),program=document.querySelector('[data-preview-program]')
+  const filterPrograms=()=>{const modelId=view.lookups.models.find(item=>item.name===model.value)?.id;for(const option of program.options){if(!option.value)continue;option.hidden=Boolean(modelId)&&String(option.dataset.modelId)!==String(modelId)}if(program.selectedOptions[0]?.hidden)program.value=''}
+  model?.addEventListener('change',filterPrograms);filterPrograms()
+}
+
 function renderMount(ctx, mode = 'calendar') {
   const isCalendar = mode === 'calendar'
   mountPlanMaintenance(ctx,async()=>{view.detail=null;await refresh(ctx,mode)})
   document.querySelector('[data-pc1-open-single]')?.addEventListener('click', event => { ctx.state.selectedVehicleRepairId = Number(event.currentTarget.dataset.pc1OpenSingle) })
   mountResourceLists(ctx, ctx.state.planningView ||= { tab: 'monthly', month: view.month, vehicleFilter: '', day: view.day }, false)
   document.querySelectorAll('[data-plan-detail]').forEach(button => button.addEventListener('click', () => openVehicle(ctx, button.dataset.planDetail)))
+  document.querySelectorAll('[data-plan-detail]').forEach(button=>{if(button.parentElement?.querySelector('[data-go-schedule]'))return;const id=Number(button.dataset.planDetail),vehicle=ctx.state.vehicleRepairs.find(row=>row.id===id),locked=['SUBMITTED','REVIEWED','PUBLISHED'].includes(vehicle?.approvalStatus),link=document.createElement('a');link.className='btn btn-sm btn-primary';link.href=locked?'#/scheduling/workforce':'#/scheduling/dashboard';link.dataset.goSchedule=button.dataset.planDetail;link.textContent=locked?'查看排程':'去排程';button.before(link)})
+  document.querySelectorAll('[data-go-schedule]').forEach(link=>link.addEventListener('click',()=>{const id=Number(link.dataset.goSchedule);ctx.state.planningView||={tab:'monthly',month:view.month,vehicleFilter:'',day:view.day};ctx.state.planningView.resourceVehicleIds=[id];ctx.state.selectedVehicleRepairId=id;ctx.demoPersistence?.save()}))
+  document.querySelector('[data-open-import-dialog]')?.addEventListener('click',()=>openImportDialog(ctx,mode))
+  document.querySelector('[data-open-manual-dialog]')?.addEventListener('click',()=>openManualDialog(ctx,mode))
   document.querySelector('[data-open-manual]')?.addEventListener('click', () => { view.manualOpen = true; ctx.rerender(false) })
   document.querySelector('[data-close-manual]')?.addEventListener('click', () => { view.manualOpen = false; ctx.rerender(false) })
   document.querySelector('[data-manual-model]')?.addEventListener('change', event => {
@@ -308,7 +348,7 @@ function renderMount(ctx, mode = 'calendar') {
     } catch (error) { setMessage(error.message, 'error') }
     finally { view.busy = false; if (input.isConnected) input.value = ''; ctx.rerender(false) }
   })
-  document.querySelector('[data-import-month]')?.addEventListener('change', event => { if (/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)) { view.importMonth = event.target.value; refresh(ctx, 'plans') } })
+  document.querySelector('[data-import-month]')?.addEventListener('change', event => { if (/^\d{4}-(0[1-9]|1[0-2])$/.test(event.target.value)) { view.month = event.target.value; view.importMonth = event.target.value; view.day = `${event.target.value}-01`; refresh(ctx, 'plans') } })
   document.querySelector('[data-annual-year]')?.addEventListener('change', event => { if (/^\d{4}$/.test(event.target.value)) { view.annualYear = event.target.value; view.importMonth = `${event.target.value}-01`; refresh(ctx, 'plans') } })
   document.querySelector('[data-retry]')?.addEventListener('click', () => refresh(ctx, mode))
   document.querySelector('[data-calendar-month]')?.addEventListener('change', event => {
@@ -342,6 +382,7 @@ function renderMount(ctx, mode = 'calendar') {
   document.querySelector('[data-close-detail]')?.addEventListener('click', () => { view.detail = null; ctx.rerender(false) })
   document.querySelector('[data-close-drawer]')?.addEventListener('click', event => { if (event.target === event.currentTarget) { view.detail = null; ctx.rerender(false) } })
   document.querySelectorAll('[data-preview-filter]').forEach(button => button.addEventListener('click', () => { view.previewFilter = button.dataset.previewFilter; ctx.rerender(false) }))
+  document.querySelectorAll('[data-edit-preview-row]').forEach(button=>button.addEventListener('click',()=>openPreviewRowEditor(ctx,button.dataset.editPreviewRow)))
   document.querySelector('[data-cancel-preview]')?.addEventListener('click', async () => {
     if (!view.preview) return
     try { await api(`/api/planning/import/preview/${encodeURIComponent(view.preview.id)}`, { method: 'DELETE' }) }
@@ -363,7 +404,7 @@ function renderMount(ctx, mode = 'calendar') {
         view.preview = { ...result.preview, filename: view.preview.filename }; setMessage('数据库出现新的计划冲突；数据未写入，请复核更新后的预览。', 'error'); ctx.rerender(false); return
       }
       view.result = result; view.preview = null; view.manualOpen = false; setMessage('导入已提交到数据库。', 'success')
-      const target = view.importType === 'ANNUAL' ? `${view.annualYear || view.month.slice(0, 4)}-01` : (view.importMonth || view.month)
+      const target = view.importType === 'ANNUAL' ? `${view.annualYear || view.month.slice(0, 4)}-01` : view.month
       view.month = target
       await Promise.all([ctx.demoPersistence?.load?.(), loadData(mode,ctx.demoPersistence?.revision)])
       ctx.rerender(false)

@@ -41,7 +41,7 @@ function formalRows(state) {
 }
 
 export function canPlanVehicle(state, vehicle) {
-  return active(vehicle) && !['COMPLETED','IN_PROGRESS','FINISHED','CLOSED'].includes(vehicle.status) && !formalRows(state).some(row => row.vehicleRepairId === vehicle.id && ['IN_PROGRESS','COMPLETED'].includes(row.status))
+  return active(vehicle) && !['SUBMITTED','REVIEWED','PUBLISHED'].includes(vehicle.approvalStatus) && !['COMPLETED','IN_PROGRESS','FINISHED','CLOSED'].includes(vehicle.status) && !formalRows(state).some(row => row.vehicleRepairId === vehicle.id && ['IN_PROGRESS','COMPLETED'].includes(row.status))
 }
 
 export function pc1Preflight(state, vehicleIds) {
@@ -275,21 +275,20 @@ export function togglePc1Lock(state, scheduleTaskId) {
   return row.isLocked
 }
 
-export function confirmPc1Preview(state) {
+export function confirmPc1Preview(state, submission={}) {
   const preview = state.pc1SchedulePreview, issues = pc1PreviewIssues(state, preview)
   if (issues.length) return { ok: false, issues }
   const next = structuredClone(state), selected = new Set(preview.vehicleRepairIds), idMap = new Map(), versions = new Map()
   let versionId = nextId(next.scheduleVersions), scheduleId = nextId(next.schedules)
   const publishedAt = formatLocalDateTime(new Date())
   for (const vehicle of next.vehicleRepairs.filter(vehicle => selected.has(vehicle.id))) {
-    for (const old of next.scheduleVersions.filter(row => row.vehicleRepairId === vehicle.id && row.status === 'PUBLISHED')) old.status = 'ARCHIVED'
-    const version = { id: versionId++, vehicleRepairId: vehicle.id, versionNo: Math.max(0, ...next.scheduleVersions.filter(row => row.vehicleRepairId === vehicle.id).map(row => Number(row.versionNo) || 0)) + 1, parentVersionId: vehicle.currentVersionId || null, reason: 'PC1模拟调整后确认', status: 'PUBLISHED', createdAt: publishedAt, publishedAt }
+    const version = { id: versionId++, vehicleRepairId: vehicle.id, versionNo: Math.max(0, ...next.scheduleVersions.filter(row => row.vehicleRepairId === vehicle.id).map(row => Number(row.versionNo) || 0)) + 1, parentVersionId: vehicle.currentVersionId || null, reason: '排程模拟确认，等待月度计划审批', status: 'DRAFT', createdAt: publishedAt, publishedAt: null }
     next.scheduleVersions.push(version); versions.set(vehicle.id, version)
-    vehicle.currentVersionId = version.id; vehicle.status = 'SCHEDULED'
+    vehicle.currentVersionId = version.id; vehicle.status = 'SCHEDULED'; vehicle.approvalStatus = 'SUBMITTED'
   }
   const confirmed = preview.schedules.map(row => {
     const id = scheduleId++; idMap.set(row.id, id)
-    return { ...row, id, versionId: versions.get(row.vehicleRepairId).id, remark: 'PC1模拟确认发布' }
+    return { ...row, id, versionId: versions.get(row.vehicleRepairId).id, remark: '排程已确认，等待月度计划审批' }
   })
   next.schedules.push(...confirmed)
   for (const collection of ['employeeAssignments','equipmentAssignments','componentAssignments']) {
@@ -297,19 +296,38 @@ export function confirmPc1Preview(state) {
     next[collection].push(...preview[collection].map(row => ({ ...row, id: id++, scheduleTaskId: idMap.get(row.scheduleTaskId), ...(collection === 'employeeAssignments' ? { assignedAt: publishedAt } : {}) })))
   }
   next.exceptions = next.exceptions.filter(row => !selected.has(row.vehicleRepairId) || row.status !== 'OPEN')
-  next.pc1Dispatches ||= []
-  let dispatchId = nextId(next.pc1Dispatches)
-  for (const vehicleId of selected) {
-    for (const team of next.teams) {
-      const rows = confirmed.filter(row => row.vehicleRepairId === vehicleId && next.teamRequirements.some(req => req.taskId === row.taskId && req.teamId === team.id))
-      if (!rows.length) continue
-      const rowIds = new Set(rows.map(row => row.id)), taskIds = new Set(rows.map(row => row.taskId))
-      next.pc1Dispatches.push({ id: dispatchId++, vehicleRepairId: vehicleId, versionId: versions.get(vehicleId).id, teamId: team.id, publishedAt, scheduleTaskIds: [...rowIds], employeeIds: unique(next.employeeAssignments.filter(row => rowIds.has(row.scheduleTaskId) && next.employees.find(employee => employee.id === row.employeeId)?.teamId === team.id).map(row => row.employeeId)), tools: structuredClone(next.toolRequirements.filter(row => taskIds.has(row.taskId))), materials: structuredClone(next.materialRequirements.filter(row => taskIds.has(row.taskId))), components: structuredClone(next.componentRequirements.filter(row => taskIds.has(row.taskId))) })
-    }
+  next.planApprovalFlows ||= []
+  let flowId = nextId(next.planApprovalFlows)
+  for (const vehicle of next.vehicleRepairs.filter(vehicle => selected.has(vehicle.id))) {
+    const existing = next.planApprovalFlows.find(flow => flow.entityType === 'MONTHLY' && flow.entityId === vehicle.id && ['SUBMITTED','REVIEWED'].includes(flow.status))
+    if (existing) continue
+    const defaultNote=`${vehicle.locomotiveNo}排程已确认，共${confirmed.filter(row=>row.vehicleRepairId===vehicle.id).length}项工序，申请主管科长审核。`
+    next.planApprovalFlows.push({ id:flowId++, entityType:'MONTHLY', entityId:vehicle.id, status:'SUBMITTED', submittedAt:publishedAt, updatedAt:publishedAt, planName:String(submission.planName||`${String(vehicle.plannedEntryAt).slice(0,7)}月度检修计划`).trim().slice(0,100), submitterDepartment:String(submission.submitterDepartment||'计划编制').trim().slice(0,100), note:String(submission.note||defaultNote).trim().slice(0,500), history:[{ action:'SUBMIT', at:publishedAt, comment:String(submission.note||'检修排程确认后提交月度计划审核').trim().slice(0,500) }] })
   }
-  next.published = true; next.lastScheduleRunAt = publishedAt; next.selectedVehicleRepairId = preview.vehicleRepairIds[0]
-  next.activityLog.unshift({ id: nextId(next.activityLog), time: publishedAt, type: '排程', text: `确认${selected.size}辆机车模拟排程，并下发班组任务及资源清单` })
+  next.lastScheduleRunAt = publishedAt; next.selectedVehicleRepairId = preview.vehicleRepairIds[0]
+  next.activityLog.unshift({ id: nextId(next.activityLog), time: publishedAt, type: '排程', text: `确认${selected.size}辆机车模拟排程，已提交月度计划审核` })
   delete next.pc1SchedulePreview
   Object.assign(state, next); delete state.pc1SchedulePreview
-  return { ok: true, vehicleIds: [...selected], schedules: confirmed.length, dispatches: next.pc1Dispatches.filter(row => [...versions.values()].some(version => version.id === row.versionId)).length }
+  return { ok: true, vehicleIds: [...selected], schedules: confirmed.length, approvalFlows: next.planApprovalFlows.filter(row => selected.has(row.entityId) && row.entityType === 'MONTHLY' && row.status === 'SUBMITTED').length, dispatches: 0 }
+}
+
+export function publishApprovedPc1Plan(state, vehicleRepairId, now=new Date()) {
+  const vehicle=state.vehicleRepairs.find(row=>row.id===Number(vehicleRepairId))
+  const version=state.scheduleVersions.find(row=>row.id===vehicle?.currentVersionId&&row.vehicleRepairId===vehicle.id)
+  if(!vehicle||!version)return {ok:false,message:'审批关联的排程版本不存在'}
+  if(version.status==='PUBLISHED')return {ok:true,dispatches:(state.pc1Dispatches||[]).filter(row=>row.versionId===version.id).length}
+  for(const old of state.scheduleVersions.filter(row=>row.vehicleRepairId===vehicle.id&&row.id!==version.id&&row.status==='PUBLISHED'))old.status='ARCHIVED'
+  const publishedAt=formatLocalDateTime(now);version.status='PUBLISHED';version.publishedAt=publishedAt
+  state.pc1Dispatches||=[];let dispatchId=nextId(state.pc1Dispatches),created=0
+  const confirmed=state.schedules.filter(row=>row.vehicleRepairId===vehicle.id&&row.versionId===version.id&&row.status!=='CANCELLED')
+  for(const team of state.teams){
+    if(state.pc1Dispatches.some(row=>row.versionId===version.id&&row.teamId===team.id))continue
+    const rows=confirmed.filter(row=>state.teamRequirements.some(req=>req.taskId===row.taskId&&req.teamId===team.id))
+    if(!rows.length)continue
+    const rowIds=new Set(rows.map(row=>row.id)),taskIds=new Set(rows.map(row=>row.taskId))
+    state.pc1Dispatches.push({id:dispatchId++,vehicleRepairId:vehicle.id,versionId:version.id,teamId:team.id,publishedAt,scheduleTaskIds:[...rowIds],employeeIds:unique(state.employeeAssignments.filter(row=>rowIds.has(row.scheduleTaskId)&&state.employees.find(employee=>employee.id===row.employeeId)?.teamId===team.id).map(row=>row.employeeId)),tools:structuredClone(state.toolRequirements.filter(row=>taskIds.has(row.taskId))),materials:structuredClone(state.materialRequirements.filter(row=>taskIds.has(row.taskId))),components:structuredClone(state.componentRequirements.filter(row=>taskIds.has(row.taskId)))});created++
+  }
+  vehicle.status='SCHEDULED';vehicle.approvalStatus='PUBLISHED';state.published=true;state.lastScheduleRunAt=publishedAt
+  state.activityLog.unshift({id:nextId(state.activityLog),time:publishedAt,type:'审批',text:`${vehicle.locomotiveNo}月度计划审批发布，正式下发${created}份班组任务清单`})
+  return {ok:true,dispatches:created}
 }

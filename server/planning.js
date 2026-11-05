@@ -260,7 +260,7 @@ export function createPlanningService(database) {
           AND ($3::bigint IS NULL OR lm.model_id=$3)
           AND ($4::bigint IS NULL OR rp.repair_program_id=$4)
           AND ($5::text = '' OR vr.locomotive_no ILIKE '%' || $5 || '%')
-          AND ($8::text IS NULL OR vr.plan_source=$8)
+          AND ($8::text IS NULL OR ($8='NON_ANNUAL' AND vr.plan_source<>'ANNUAL') OR ($8<>'NON_ANNUAL' AND vr.plan_source=$8))
         ORDER BY vr.planned_entry_at, vr.locomotive_no, vr.vehicle_repair_id`, [from || '1900-01-01', to || '2199-12-31', modelId || null, programId || null, locomotiveNo || '', vehicleId || null, entryOnly, planSource || null])
     return result.rows.map(row => ({
       id: Number(row.vehicle_repair_id), locomotiveNo: row.locomotive_no,
@@ -273,6 +273,87 @@ export function createPlanningService(database) {
       planSource: row.plan_source, remark: row.remark, status: row.status, approvalStatus: row.approval_status,
       currentVersionId: row.current_version_id == null ? null : Number(row.current_version_id), versionStatus: row.version_status,
     }))
+  }
+
+  async function annualRows({ year, depot = '', modelId, programId }) {
+    const result = await pool.query(
+      `SELECT vr.vehicle_repair_id, vr.locomotive_no, vr.repair_program_id,
+              rp.repair_program_name, lm.model_id, lm.model_name,
+              vr.planned_entry_at, vr.planned_exit_at, vr.actual_exit_at,
+              vr.owner_bureau, vr.owner_depot, vr.repair_sequence, vr.mileage_km,
+              vr.plan_source, vr.remark, vr.status, vr.approval_status,
+              vr.current_version_id, sv.status AS version_status,
+              COALESCE(vr.actual_exit_at,
+                CASE WHEN sv.status='CURRENT' THEN exit_task.planned_end_at END,
+                vr.planned_exit_at) AS verification_at,
+              CASE
+                WHEN vr.actual_exit_at IS NOT NULL THEN 'ACTUAL'
+                WHEN sv.status='CURRENT' AND exit_task.planned_end_at IS NOT NULL THEN 'SCHEDULED'
+                WHEN vr.planned_exit_at IS NOT NULL THEN 'PLANNED'
+                ELSE NULL
+              END AS verification_source
+         FROM ${qualified('vehicle_repair')} vr
+         JOIN ${qualified('repair_program')} rp ON rp.repair_program_id=vr.repair_program_id
+         JOIN ${qualified('locomotive_model')} lm ON lm.model_id=rp.model_id
+         LEFT JOIN ${qualified('schedule_version')} sv ON sv.version_id=vr.current_version_id AND sv.vehicle_repair_id=vr.vehicle_repair_id AND sv.status='CURRENT'
+         LEFT JOIN LATERAL (
+           SELECT max(s.planned_end_at) AS planned_end_at
+             FROM ${qualified('vehicle_repair_schedule')} s
+            WHERE s.vehicle_repair_id=vr.vehicle_repair_id AND s.version_id=vr.current_version_id
+              AND s.status NOT IN ('CANCELLED','CANCELED')
+         ) exit_task ON true
+        WHERE vr.status NOT IN ('CANCELLED','CANCELED')
+          AND vr.plan_source='ANNUAL'
+          AND vr.planned_entry_at >= make_date($1,1,1)
+          AND vr.planned_entry_at < make_date($1 + 1,1,1)
+          AND ($2::text = '' OR COALESCE(vr.owner_depot,'未填写')=$2)
+          AND ($3::bigint IS NULL OR lm.model_id=$3)
+          AND ($4::bigint IS NULL OR rp.repair_program_id=$4)
+        ORDER BY vr.planned_entry_at, vr.locomotive_no, vr.vehicle_repair_id`,
+      [Number(year), depot, modelId || null, programId || null])
+    return result.rows.map(row => ({
+      id: Number(row.vehicle_repair_id), locomotiveNo: row.locomotive_no,
+      repairProgramId: Number(row.repair_program_id), repairProgramName: row.repair_program_name,
+      modelId: Number(row.model_id), modelName: row.model_name,
+      plannedEntryAt: String(row.planned_entry_at).replace(' ', 'T'), entryDate: dateOnly(row.planned_entry_at),
+      plannedExitDate: dateOnly(row.planned_exit_at), actualExitDate: dateOnly(row.actual_exit_at),
+      verificationDate: dateOnly(row.verification_at), verificationSource: row.verification_source,
+      ownerBureau: row.owner_bureau, ownerDepot: row.owner_depot || '未填写',
+      repairSequence: row.repair_sequence, mileageKm: row.mileage_km == null ? null : Number(row.mileage_km),
+      planSource: row.plan_source, remark: row.remark, status: row.status, approvalStatus: row.approval_status,
+      currentVersionId: row.current_version_id == null ? null : Number(row.current_version_id), versionStatus: row.version_status,
+    }))
+  }
+
+  function annualStats(rows, year) {
+    const months = Array.from({ length: 12 }, (_, index) => `${year}-${String(index + 1).padStart(2, '0')}`)
+    const depots = [...new Set(rows.map(row => row.ownerDepot || '未填写'))].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+    const series = depots.map(depot => ({ depot, values: months.map(month => rows.filter(row => row.ownerDepot === depot && row.verificationDate?.startsWith(month)).length), total: rows.filter(row => row.ownerDepot === depot && row.verificationDate?.startsWith(String(year))).length }))
+    const detailMap = new Map()
+    for (const row of rows) {
+      if (!row.verificationDate?.startsWith(String(year))) continue
+      const month = row.verificationDate.slice(0, 7)
+      const key = `${month}\0${row.ownerDepot}`
+      const detail = detailMap.get(key) || { month, depot: row.ownerDepot, count: 0, locomotives: [] }
+      detail.count += 1
+      detail.locomotives.push(row.locomotiveNo)
+      detailMap.set(key, detail)
+    }
+    return { months, depots, series, details: [...detailMap.values()].sort((a, b) => a.month.localeCompare(b.month) || a.depot.localeCompare(b.depot, 'zh-CN')) }
+  }
+
+  function annualSummary(rows, year) {
+    const months = Array.from({ length: 12 }, (_, index) => `${year}-${String(index + 1).padStart(2, '0')}`)
+    const groups = new Map()
+    for (const row of rows) {
+      const key = `${row.modelName}\0${row.repairProgramName}`
+      const summary = groups.get(key) || { modelName: row.modelName, repairProgramName: row.repairProgramName, values: Array(12).fill(0), total: 0 }
+      const index = months.indexOf(row.entryDate?.slice(0, 7))
+      if (index >= 0) summary.values[index] += 1
+      summary.total += 1
+      groups.set(key, summary)
+    }
+    return { months, rows: [...groups.values()].sort((a, b) => a.modelName.localeCompare(b.modelName, 'zh-CN') || a.repairProgramName.localeCompare(b.repairProgramName, 'zh-CN')) }
   }
 
   async function preview({ sessionId, importType, year, month, filename, contentBase64 }) {
@@ -295,6 +376,30 @@ export function createPlanningService(database) {
     const fileWarnings = rows.some(row => row.warnings.length) ? [...new Set(rows.flatMap(row => row.warnings))] : []
     const entry = { id, sessionId, importType, period, filename, rows, warnings: fileWarnings, expiresAtMs, expiresAt: new Date(expiresAtMs).toISOString(), commitPromise: null, result: null }
     previews.set(id, entry)
+    return publicPreview(entry)
+  }
+
+  async function updatePreviewRow(sessionId, previewId, line, values) {
+    const entry=requirePreview(sessionId,previewId)
+    if(entry.result)throw httpError(409,'导入已提交，不能修改预览')
+    const target=entry.rows.find(row=>row.line===Number(line))
+    if(!target)throw httpError(404,'预览行不存在')
+    if(!values||typeof values!=='object'||Array.isArray(values))throw httpError(400,'修改内容无效')
+    const matrix=[planHeaders,...entry.rows.map(row=>planFields.map(field=>row.line===target.line?(values[field.key]??''):(row.raw?.[field.label]??'')))]
+    const dictionary=await dictionaries(pool,schema)
+    const rows=normalizeRows(matrix,entry.importType,entry.period,dictionary)
+    const client=await pool.connect()
+    try{await applyDatabaseConflicts(client,schema,rows)}finally{client.release()}
+    const updated=rows.find(row=>row.line===target.line)
+    if(updated){
+      const result=updated.status==='ready'
+        ? '重新校验通过'
+        : `重新校验未通过：${updated.errors.map(error=>error.message).join('；')}`.slice(0,500)
+      updated.raw['备注']=result
+      updated.data.remark=result
+    }
+    entry.rows=rows;entry.warnings=rows.some(row=>row.warnings.length)?[...new Set(rows.flatMap(row=>row.warnings))]:[]
+    entry.expiresAtMs=Date.now()+ttl;entry.expiresAt=new Date(entry.expiresAtMs).toISOString()
     return publicPreview(entry)
   }
 
@@ -353,6 +458,11 @@ export function createPlanningService(database) {
       const dict = await dictionaries(pool, schema)
       return { models: [...dict.models.values()], programs: [...dict.programs.values()] }
     },
+    async annual({ year, depot = '', modelId, programId }) {
+      const allRows = await annualRows({ year, modelId, programId })
+      const rows = depot ? allRows.filter(row => row.ownerDepot === depot) : allRows
+      return { year: Number(year), rows, summary: annualSummary(rows, Number(year)), stats: annualStats(rows, Number(year)), depots: [...new Set(allRows.map(row => row.ownerDepot || '未填写'))].sort((a, b) => a.localeCompare(b, 'zh-CN')) }
+    },
     async calendar(params) { return { vehicles: await calendarRows(params) } },
     async plans(params) { return { vehicles: await calendarRows({ ...params, entryOnly: true }) } },
     async vehicle(id) { return getVehicle(id) },
@@ -363,6 +473,7 @@ export function createPlanningService(database) {
       return detailedErrorsCsv(entry.rows.filter(row => row.errors.length || row.status !== 'ready'))
     },
     async preview(input) { return preview(input) },
+    async updatePreviewRow(sessionId,id,line,values){return updatePreviewRow(sessionId,id,line,values)},
     async cancel(sessionId, id) { const entry = requirePreview(sessionId, id); if (entry.result) throw httpError(409, '导入已提交，不能取消'); previews.delete(id); return { cancelled: true } },
     async confirm(sessionId, id) {
       const entry = requirePreview(sessionId, id)

@@ -65,7 +65,7 @@ export function recordVehicleMilestones(state,id,input,now=new Date()) {
 export function editablePlanError(state,id) {
   const row=state.vehicleRepairs.find(row=>row.id===Number(id))
   if (!row) return '计划不存在'
-  if (!['DRAFT','UNSCHEDULED'].includes(row.status) || (row.approvalStatus && row.approvalStatus!=='DRAFT') || row.actualEntryAt || row.onStandAt) return '仅未提交、未接车的计划可以修改或删除'
+  if (!['DRAFT','UNSCHEDULED'].includes(row.status) || (row.approvalStatus && !['DRAFT','REJECTED'].includes(row.approvalStatus)) || row.actualEntryAt || row.onStandAt) return '仅未提交、已驳回且未接车的计划可以修改或删除'
   if (state.schedules.some(item=>item.vehicleRepairId===row.id) || state.scheduleVersions.some(item=>item.vehicleRepairId===row.id)) return '计划已有排程或历史版本，不能直接修改或删除'
   if (state.approvalRecords.some(item=>item.vehicleRepairId===row.id) || state.pc1Dispatches?.some(item=>item.vehicleRepairId===row.id)) return '计划已有审批或下发记录，不能直接修改或删除'
   if (state.pc1SchedulePreview?.vehicleRepairIds?.includes(row.id)) return '本车正在模拟排程，请先取消模拟'

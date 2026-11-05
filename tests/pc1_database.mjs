@@ -7,6 +7,7 @@ import { createState } from '../src/core/state.js'
 import { commitImport, parseCsv, templateCsv } from '../src/core/plan-import.js'
 import { simulatePc1, pc1PreviewIssues, confirmPc1Preview } from '../src/core/pc1-simulation.js'
 import { exportDemoSnapshot } from '../src/core/demo-persistence.js'
+import { processPlanFlow } from '../src/core/planning-json-workflow.js'
 
 const schema = `pc1_test_workflow_${Date.now()}_${process.pid}`
 let db = createDatabase({...loadConfig(),schema}), server
@@ -22,10 +23,13 @@ try {
   assert.deepEqual(pc1PreviewIssues(restored.snapshot.data),[], 'preview must stay valid after PostgreSQL roundtrip')
   const confirmed = confirmPc1Preview(restored.snapshot.data)
   assert.equal(confirmed.ok,true,JSON.stringify(confirmed))
+  for(const id of ids){const flow=restored.snapshot.data.planApprovalFlows.find(row=>row.entityType==='MONTHLY'&&row.entityId===id&&row.status==='SUBMITTED');assert.equal(processPlanFlow(restored.snapshot.data,flow.id,'REVIEW','科长审核').ok,true);assert.equal(processPlanFlow(restored.snapshot.data,flow.id,'PUBLISH','副段长发布').ok,true)}
   await db.save(restored.revision,exportDemoSnapshot(restored.snapshot.data))
   await db.close(); db = createDatabase({...loadConfig(),schema}); await db.init()
   restored = await db.read()
   assert.equal(restored.snapshot.data.pc1Dispatches.length,4)
+  assert.equal(restored.snapshot.data.planApprovalFlows.filter(row=>row.entityType==='MONTHLY'&&ids.includes(row.entityId)).length,2,'monthly approval records survive PostgreSQL restart')
+  assert.ok(ids.every(id=>restored.snapshot.data.vehicleRepairs.find(row=>row.id===id).approvalStatus==='PUBLISHED'),'vehicle approval status survives PostgreSQL restart')
   const task = restored.snapshot.data.schedules.find(row => row.vehicleRepairId === ids[0] && row.taskId === 1001)
   server = http.createServer(createHandler(db))
   await new Promise(resolve => server.listen(0,'127.0.0.1',resolve))

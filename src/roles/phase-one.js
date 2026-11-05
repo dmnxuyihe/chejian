@@ -5,6 +5,7 @@ import { foremanRole } from './foreman/index.js'
 import { workerRole } from './worker/index.js'
 import { qualityRole } from './quality/index.js'
 import { technicalRole } from './technical/index.js'
+import { approvalRole } from './approval/index.js'
 import { escapeHtml } from '../core/ui.js'
 import { vehicleCenterPage } from './scheduling/pages/vehicle-center.js'
 import { pageHeader } from '../shared/templates.js'
@@ -28,7 +29,7 @@ const plannedPage = (roleLabel, section, label, scopeLabels) => ({
 const specs = [
   ['planning','计划管理人员','计',[
     ['年度检修计划',['年度计划同步与汇总','年度计划查询与交验统计']],
-    ['月度检修计划',['月度计划同步与编制','月度计划日历查询']],
+    ['月度检修计划',['月度计划同步与编制','月度计划日历查询','月度计划交验统计']],
     ['配件月度计划',['配件下车检修计划','配件上车计划']],
     ['临修及产线计划',['整车临修计划','产线检修计划编制']],
   ]],
@@ -124,16 +125,17 @@ const specs = [
   ]],
 ]
 
-const legacy = { 'system-admin':systemAdminRole, planning:planningRole, scheduling:schedulingRole, foreman:foremanRole, worker:workerRole, quality:qualityRole, technical:technicalRole }
+const legacy = { 'system-admin':systemAdminRole, planning:planningRole, approval:approvalRole, scheduling:schedulingRole, foreman:foremanRole, worker:workerRole, quality:qualityRole, technical:technicalRole }
 const implementations = {
-  planning:{'月度计划同步与编制':'plans','月度计划日历查询':'g2-p2'},
+  planning:{'年度计划同步与汇总':'annual-plan','年度计划查询与交验统计':'annual-stats','月度计划同步与编制':'plans','月度计划日历查询':'g2-p2','月度计划交验统计':'monthly-stats','配件下车检修计划':'component-down-plan','配件上车计划':'component-up-plan','整车临修计划':'temporary-repair'},
+  approval:{'月度检修计划审核审批':'monthly-plan-approval','整车临修审核审批':'vehicle-temp-approval','配件临修审核审批':'component-temp-approval'},
   scheduling:{'整车日计划编排与调整':'dashboard','日计划发布与任务下发':'gantt','整车日计划/修程查询':'workforce','车间每日任务日历':'workshop-calendar','计划下发与执行跟踪':'exceptions'},
   'workshop-management':{'机车检修进度监控':'control'},
   foreman:{'整车派工与人员调整':'team-tasks'},
   worker:{'整车检修作业':'my-tasks'},
   inspector:{'整车检修专检':'inspections'},
   acceptance:{'整车检修验收':'inspections'},
-  technical:{'整车修程与工序配置':'process'},
+  technical:{'整车修程与工序配置':'process','配件临修技术方案':'component-temporary'},
   'component-management':{'配件档案与统计':'components'},
   'material-warehouse':{'库存与单品查询':'resources'},
   'tool-management':{'工具字典与工具台账':'resources'},
@@ -161,6 +163,7 @@ export const phaseOneRoles = Object.fromEntries(specs.map(([id,label,short,group
     nav.push({id:idForPage,label:pageLabel,section,icon:implementedId ? 'task' : 'list',status:implementedId ? 'implemented' : 'planned'})
   }))
   if (id === 'system-admin') nav.unshift(...adminResources)
+  if (id === 'planning') nav.push({id:'planning-completion',label:'计划完善与统计中心',section:'计划综合管理',icon:'chart',status:'implemented',utility:true})
   const defaultPage = id === 'system-admin' ? 'resources' : nav[0].id
   return [id,{ id,label,short,group:groups[0][0],defaultPage,nav,pages }]
 }))

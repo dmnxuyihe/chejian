@@ -24,8 +24,10 @@ function snapshotData(state) {
 }
 
 function validateData(data) {
+  if (data?.planningDemoSeedVersion === undefined) data.planningDemoSeedVersion = 0
   if (!object(data)) throw new Error('备份中缺少演示数据')
   for (const key of ['maintenanceRecords', 'pc1Dispatches']) if (data[key] === undefined) data[key] = []
+  for(const key of ['temporaryRepairPlans','componentTemporaryPlans','planApprovalFlows','annualPlanAdjustments','componentMonthlyPlanRecords','monthlyVerificationRecords','monthlyPlanAdjustmentHistory'])if(data[key]===undefined)data[key]=[]
   // Upgrade pre-resource-list backups once; a deliberately empty new-format
   // requirement list remains empty.
   for (const [key, inventory, idField] of [['toolRequirements', 'tools', 'toolId'], ['materialRequirements', 'materials', 'materialId']]) {
@@ -64,6 +66,21 @@ function validateData(data) {
       (row.plannedExitAt != null && (!validDate(row.plannedExitAt) || new Date(row.plannedExitAt) <= new Date(row.plannedEntryAt))) ||
       !Number.isFinite(row.priority) || (row.mileageKm != null && !Number.isFinite(row.mileageKm)) || typeof row.status !== 'string' || (row.currentVersionId != null && !versions.has(row.currentVersionId))) throw new Error('车辆计划日期、状态或排程版本无效')
   }
+  if (new Set(data.temporaryRepairPlans.map(row => row.id)).size !== data.temporaryRepairPlans.length) throw new Error('整车临修计划编号重复')
+  for (const row of data.temporaryRepairPlans) {
+    if (!positiveId(row.id) || typeof row.locomotiveNo !== 'string' || !row.locomotiveNo.trim() || !data.locomotiveModels.some(model => model.id === row.modelId) || typeof row.ownerDepot !== 'string' || !row.ownerDepot.trim() || !validDate(row.plannedEntryAt) || !validDate(row.plannedPlatformAt) || new Date(row.plannedPlatformAt) < new Date(row.plannedEntryAt) || typeof row.content !== 'string' || !row.content.trim() || row.content.length > 1000 || !['DRAFT','SUBMITTED','APPROVED','PUBLISHED'].includes(row.status)) throw new Error('整车临修计划内容无效')
+    const file = row.solutionAttachment
+    if (file != null && (!object(file) || typeof file.name !== 'string' || file.name.length > 128 || !['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','image/png','image/jpeg','image/webp'].includes(file.mimeType) || !Number.isSafeInteger(file.bytes) || file.bytes <= 0 || file.bytes > 2 * 1024 * 1024 || typeof file.contentBase64 !== 'string' || file.contentBase64.length > 3 * 1024 * 1024)) throw new Error('临修方案附件格式无效或超过2MB')
+  }
+  const uniqueIds = (rows,label) => { if (rows.some(row=>!positiveId(row.id)) || new Set(rows.map(row=>row.id)).size!==rows.length) throw new Error(`${label}编号重复或无效`) }
+  uniqueIds(data.componentTemporaryPlans,'配件临修计划');uniqueIds(data.planApprovalFlows,'计划审批记录');uniqueIds(data.annualPlanAdjustments,'年度调整记录');uniqueIds(data.componentMonthlyPlanRecords,'配件月计划');uniqueIds(data.monthlyVerificationRecords,'月度交验记录')
+  uniqueIds(data.monthlyPlanAdjustmentHistory,'月计划调整记录')
+  for(const row of data.componentTemporaryPlans){if(typeof row.name!=='string'||!row.name||!data.locomotiveModels.some(model=>model.id===row.modelId)||typeof row.serialNo!=='string'||!row.serialNo||typeof row.specification!=='string'||!validDate(row.plannedEntryAt)||typeof row.content!=='string'||!row.content||!['DRAFT','SUBMITTED','APPROVED','PUBLISHED'].includes(row.status))throw new Error('配件临修计划内容无效');const file=row.solutionAttachment;if(file!=null&&(!object(file)||typeof file.name!=='string'||typeof file.contentBase64!=='string'||!Number.isSafeInteger(file.bytes)||file.bytes<=0||file.bytes>2*1024*1024))throw new Error('配件临修方案附件无效')}
+  for(const row of data.planApprovalFlows){if(!['MONTHLY','TEMP_VEHICLE','TEMP_COMPONENT','COMPONENT_UP'].includes(row.entityType)||!positiveId(row.entityId)||!['SUBMITTED','REVIEWED','REJECTED','PUBLISHED'].includes(row.status)||!validDate(row.submittedAt)||!validDate(row.updatedAt)||!Array.isArray(row.history))throw new Error('计划审批流程记录无效')}
+  for(const row of data.annualPlanAdjustments)if(!Number.isInteger(row.year)||!Number.isInteger(row.month)||row.month<1||row.month>12||!data.locomotiveModels.some(x=>x.id===row.modelId)||!data.repairPrograms.some(x=>x.id===row.programId)||!['baseline','adjusted','actual','deliveryDays'].every(key=>Number.isFinite(row[key])&&row[key]>=0))throw new Error('年度计划调整记录无效')
+  for(const row of data.componentMonthlyPlanRecords)if(!/^\d{4}-\d{2}$/.test(row.month)||!['DOWN','UP'].includes(row.direction)||!data.componentTypes.some(x=>x.id===row.componentTypeId)||!['planned','calculated','mileageKm'].every(key=>Number.isFinite(row[key])&&row[key]>=0)||!['DRAFT','SUBMITTED','APPROVED','PUBLISHED'].includes(row.status))throw new Error('配件月计划记录无效')
+  for(const row of data.monthlyVerificationRecords)if(!vehicles.has(row.vehicleRepairId)||!/^\d{4}-\d{2}-\d{2}$/.test(row.date)||typeof row.depot!=='string'||!row.depot||!['PASSED','FAILED','PENDING'].includes(row.result))throw new Error('月度交验记录无效')
+  for(const row of data.monthlyPlanAdjustmentHistory)if(!vehicles.has(row.vehicleRepairId)||typeof row.reason!=='string'||!row.reason||!validDate(row.requestedAt)||typeof row.previousApprovalStatus!=='string')throw new Error('月计划调整记录无效')
   for (const vehicle of data.vehicleRepairs) {
     if(['actualEntryAt','actualExitAt','onStandAt'].some(key=>vehicle[key]!=null && !validDate(vehicle[key]))) throw new Error('车辆实际时间无效')
     const error=milestoneError(vehicle,vehicle.actualEntryAt??null,vehicle.onStandAt??null,data.schedules.filter(row=>row.vehicleRepairId===vehicle.id))
