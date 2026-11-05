@@ -79,7 +79,7 @@ try {
     await page.locator('[data-open-import-dialog]').click()
     await page.locator('[data-dialog-plan-file]').setInputFiles({ name: '混合错误.csv', mimeType: 'text/csv', buffer: Buffer.from(invalidMixed) })
     await page.locator('.modal [data-modal-confirm]').click()
-    await page.waitForFunction(() => document.querySelector('.pc-plan-preview') || (document.querySelector('.pc-plan-message')?.textContent.trim() && !document.querySelector('.pc-plan-message').textContent.includes('正在上传')), null, { timeout: 10000 }).catch(() => {})
+    await page.locator('.pc-plan-preview').waitFor({ timeout: 10000 })
     assert.equal(await page.locator('.pc-plan-preview').count(), 1, `file preview failed: ${await page.locator('.pc-plan-message').innerText()} | ${requestIssues.join('; ')} | ${pageErrors.join('; ')}`)
     assert.match(await page.locator('.pc-plan-preview').innerText(), /可导入1行，错误1行/)
     assert.ok((await page.locator('.pc-plan-preview').innerText()).includes('2027-12-03'), 'slash dates normalize to YYYY-MM-DD and monthly imports allow another month')
@@ -142,9 +142,7 @@ try {
     assert.ok(Math.abs(heights.left - heights.right) < 2, `calendar and details must be equal height: ${JSON.stringify(heights)}`)
     assert.ok(heights.listScroll > heights.listHeight, 'long daily details must scroll inside the right panel')
     assert.ok((await page.locator('.pc-plan-calendar').innerText()).includes('还有12条'))
-    await page.locator('[data-filter-model]').selectOption(String(model.id))
-    assert.equal(await page.locator('.pc-plan-vehicle-card').count(), 15)
-    await page.locator('[data-filter-model]').selectOption('')
+    assert.equal(await page.locator('[data-filter-model]').count(),0,'simplified monthly calendar omits extra filters')
 
     await page.locator('[data-open-vehicle]').first().click()
     await page.locator('.pc-plan-drawer').waitFor()
@@ -194,7 +192,7 @@ try {
     await page.waitForFunction(() => document.querySelector('.pc-plan-calendar') && !document.querySelector('.pc-plan-calendar').innerText.includes('TEST-CALENDAR'))
     await page.getByText('当前日历范围内暂无匹配的检修计划。').waitFor()
     assert.equal(pageErrors.length, 0, pageErrors.join('\n'))
-    console.log(JSON.stringify({ passed: true, calendarClickMs: clickElapsed, checks: ['separate import and calendar routes', 'manual create through preview and confirmation', 'database-backed plan list and dictionaries', 'xlsx/csv template downloads', 'preview zero-write and cancel zero-write', 'mixed row errors with original values and CSV download', 'monthly import accepts other months and normalizes slash dates', 'calendar click latency and no persistence write', 'adjacent-month date click jumps to the selected month', 'equal desktop panels and inner detail scroll', 'more-than-three daily events', 'model filter', 'vehicle details drawer', 'official schedule publish produces CURRENT exit', 'tablet stacked layout', 'mobile horizontal overflow', 'empty-month state'], screenshots: output }, null, 2))
+    console.log(JSON.stringify({ passed: true, calendarClickMs: clickElapsed, checks: ['separate import and calendar routes', 'manual create through preview and confirmation', 'database-backed plan list and dictionaries', 'xlsx/csv template downloads', 'preview zero-write and cancel zero-write', 'mixed row errors with original values and CSV download', 'monthly import accepts other months and normalizes slash dates', 'calendar click latency and no persistence write', 'adjacent-month date click jumps to the selected month', 'equal desktop panels and inner detail scroll', 'more-than-three daily events', 'simplified monthly calendar without redundant filters', 'vehicle details drawer', 'official schedule publish produces CURRENT exit', 'tablet stacked layout', 'mobile horizontal overflow', 'empty-month state'], screenshots: output }, null, 2))
   } finally { await browser.close() }
 } finally {
   if (server) await new Promise(resolve => server.close(resolve))

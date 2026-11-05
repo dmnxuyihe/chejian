@@ -385,7 +385,7 @@ export function createPlanningService(database) {
     const target=entry.rows.find(row=>row.line===Number(line))
     if(!target)throw httpError(404,'预览行不存在')
     if(!values||typeof values!=='object'||Array.isArray(values))throw httpError(400,'修改内容无效')
-    const matrix=[planHeaders,...entry.rows.map(row=>planFields.map(field=>row.line===target.line?(values[field.key]??''):(row.raw?.[field.label]??'')))]
+    const matrix=[planHeaders,...entry.rows.map(row=>planFields.map(field=>row.line===target.line?(values[field.key]??row.raw?.[field.label]??''):(row.raw?.[field.label]??'')))]
     const dictionary=await dictionaries(pool,schema)
     const rows=normalizeRows(matrix,entry.importType,entry.period,dictionary)
     const client=await pool.connect()
@@ -395,8 +395,7 @@ export function createPlanningService(database) {
       const result=updated.status==='ready'
         ? '重新校验通过'
         : `重新校验未通过：${updated.errors.map(error=>error.message).join('；')}`.slice(0,500)
-      updated.raw['备注']=result
-      updated.data.remark=result
+      updated.validationMessage=result
     }
     entry.rows=rows;entry.warnings=rows.some(row=>row.warnings.length)?[...new Set(rows.flatMap(row=>row.warnings))]:[]
     entry.expiresAtMs=Date.now()+ttl;entry.expiresAt=new Date(entry.expiresAtMs).toISOString()

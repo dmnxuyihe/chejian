@@ -15,7 +15,7 @@ assert.equal(createTemporaryRepairPlan(state,{ownerDepot:'模拟段',modelId:1,l
 const componentFlow=submitPlanFlow(state,'TEMP_COMPONENT',1,'技术科提报');assert.equal(componentFlow.ok,true);assert.equal(processPlanFlow(state,componentFlow.id,'REVIEW','审核发布').ok,true);assert.equal(state.componentTemporaryPlans[0].status,'PUBLISHED')
 const vehicleFlow=submitPlanFlow(state,'TEMP_VEHICLE',1,'方案提报');assert.equal(processPlanFlow(state,vehicleFlow.id,'REVIEW','技术审核').ok,true);assert.equal(processPlanFlow(state,vehicleFlow.id,'PUBLISH','领导审批').ok,true);assert.equal(state.temporaryRepairPlans[0].status,'PUBLISHED')
 const monthlyFlow=submitPlanFlow(state,'MONTHLY',1,'月计划提报');assert.equal(processPlanFlow(state,monthlyFlow.id,'REVIEW','科长审核').ok,true);assert.equal(processPlanFlow(state,monthlyFlow.id,'PUBLISH','副段长发布').ok,true);assert.equal(state.vehicleRepairs[0].approvalStatus,'PUBLISHED')
-assert.equal(requestMonthlyPlanAdjustment(state,1,'季度任务变化，需要调整入段日期').ok,true);assert.equal(state.vehicleRepairs[0].approvalStatus,'DRAFT')
+assert.equal(requestMonthlyPlanAdjustment(state,1,'季度任务变化，需要调整入段日期').ok,true);assert.equal(state.vehicleRepairs[0].approvalStatus,'REVISING')
 const componentCsv='\uFEFF月份,方向,配件名称,计划数量,测算数量,匹配公里\r\n2026-12,上车,车轮,4,4,510000\r\n'
 assert.equal(parseComponentMonthlyFile({filename:'配件月计划.csv',contentBase64:Buffer.from(componentCsv).toString('base64')})[0].componentName,'车轮')
 const restored=parseDemoSnapshot(JSON.stringify(exportDemoSnapshot(state))).data

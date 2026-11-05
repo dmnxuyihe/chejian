@@ -8,7 +8,6 @@ import { workspaceArt } from '../shared/workspace-art.js'
 import { createDemoPersistence } from './demo-persistence.js'
 import { createDatabasePersistence } from './database-persistence.js'
 import { demoPath, renderDemoShell } from '../demo/index.js'
-import { ensurePlanningDemoData } from '../data/planning-demo-data.js'
 
 export const state = createState()
 // Access can fail in restricted/private browser contexts. Keep the page usable and
@@ -33,7 +32,6 @@ async function initialize() {
       demoPersistence = createDemoPersistence(state, { getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) })
       demoPersistence.load()
     } else throw new Error('后端存储配置无效')
-    if (ensurePlanningDemoData(state)) await demoPersistence.save()
     initialized = true
     if (!location.hash) location.hash = location.pathname.endsWith('/demo.html') ? '#/demo/calendar' : `#/${functionPath(defaultFunctionEntry)}`
     else render()

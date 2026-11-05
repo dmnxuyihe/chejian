@@ -1,3 +1,4 @@
+import { recordMonthlyApproval } from './planning-approval-records.js'
 import { formatLocalDateTime } from './derived.js'
 import { publishApprovedPc1Plan } from './pc1-simulation.js'
 
@@ -12,16 +13,24 @@ export function submitPlanFlow(state,type,id,note='',now=new Date()){
  if(type==='TEMP_COMPONENT'&&!row.solutionAttachment)return fail('请先上传配件临修方案')
  if(state.planApprovalFlows.some(item=>item.entityType===type&&item.entityId===Number(id)&&!['REJECTED','PUBLISHED'].includes(item.status)))return fail('该计划已在审批流程中')
  const at=nowText(now),flow={id:nextId(state.planApprovalFlows),entityType:type,entityId:Number(id),status:'SUBMITTED',submittedAt:at,updatedAt:at,note:String(note||'').trim().slice(0,500),history:[{action:'SUBMIT',at,comment:String(note||'').trim().slice(0,500)}]}
+ if(type==='MONTHLY')flow.versionId=row.currentVersionId??null
+ recordMonthlyApproval(state,flow,'SUBMIT',at)
  state.planApprovalFlows.push(flow);row.status='SUBMITTED';if(type==='MONTHLY')row.approvalStatus='SUBMITTED';return {ok:true,id:flow.id}
 }
 export function processPlanFlow(state,flowId,action,comment='',now=new Date()){
  const flow=state.planApprovalFlows.find(row=>row.id===Number(flowId));if(!flow)return fail('审批记录不存在')
  const row=target(state,flow.entityType,flow.entityId);if(!row)return fail('关联计划不存在')
- const at=nowText(now),text=String(comment||'').trim().slice(0,500)
+ const at=nowText(now),text=String(comment||'').trim().slice(0,500),previousStatus=flow.status
+ if(flow.entityType==='MONTHLY' && ['SUBMITTED','REVIEWED'].includes(flow.status)){
+  const versionId=flow.versionId??row.currentVersionId
+  if(versionId!==row.currentVersionId||!state.scheduleVersions.some(version=>version.id===versionId&&version.vehicleRepairId===row.id))return fail('审批排程版本已变化，请重新提交审核')
+  flow.versionId=versionId
+ }
  if(action==='REJECT'){if(!['SUBMITTED','REVIEWED'].includes(flow.status))return fail('当前状态不能驳回');flow.status='REJECTED';row.status=flow.entityType==='MONTHLY'?'SCHEDULED':'DRAFT';if(flow.entityType==='MONTHLY')row.approvalStatus='REJECTED'}
  else if(action==='REVIEW'){if(flow.status!=='SUBMITTED')return fail('仅已提报计划可以审核');if(flow.entityType==='TEMP_COMPONENT'){flow.status='PUBLISHED';row.status='PUBLISHED'}else{flow.status='REVIEWED';if(flow.entityType!=='MONTHLY')row.status='APPROVED'};if(flow.entityType==='MONTHLY')row.approvalStatus=flow.status}
  else if(action==='PUBLISH'){if(flow.status!=='REVIEWED')return fail('计划需先审核通过');if(flow.entityType==='MONTHLY'){const published=publishApprovedPc1Plan(state,row.id,now);if(!published.ok)return published;flow.status='PUBLISHED';row.status='SCHEDULED';row.approvalStatus='PUBLISHED'}else{flow.status='PUBLISHED';row.status='PUBLISHED'}}
  else return fail('审批操作无效')
+ recordMonthlyApproval(state,{...flow,status:previousStatus},action,at,text)
  flow.updatedAt=at;flow.history.push({action,at,comment:text});return {ok:true}
 }
 
@@ -58,7 +67,7 @@ export function requestMonthlyPlanAdjustment(state,vehicleRepairId,reason,now=ne
 export function requestMonthlyPlanRevision(state,vehicleRepairId,reason,now=new Date()){
  const row=state.vehicleRepairs.find(item=>item.id===Number(vehicleRepairId)),text=String(reason||'').trim();if(!row)return fail('月度计划不存在');if(!['SUBMITTED','REVIEWED'].includes(row.approvalStatus))return fail('只有待审核或待审批发布计划可以确认修改');if(!text||text.length>500)return fail('请填写500字以内修改原因')
  const flow=[...state.planApprovalFlows].reverse().find(item=>item.entityType==='MONTHLY'&&item.entityId===row.id&&['SUBMITTED','REVIEWED'].includes(item.status));if(!flow)return fail('未找到当前审批记录')
- const at=nowText(now);flow.status='REJECTED';flow.updatedAt=at;flow.history.push({action:'WITHDRAW_FOR_REVISION',at,comment:text});state.monthlyPlanAdjustmentHistory.push({id:nextId(state.monthlyPlanAdjustmentHistory),vehicleRepairId:row.id,reason:text,requestedAt:at,previousApprovalStatus:row.approvalStatus});row.approvalStatus='REVISING';row.status='SCHEDULED';return{ok:true}
+ const at=nowText(now);recordMonthlyApproval(state,flow,'REJECT',at,text);flow.status='REJECTED';flow.updatedAt=at;flow.history.push({action:'WITHDRAW_FOR_REVISION',at,comment:text});state.monthlyPlanAdjustmentHistory.push({id:nextId(state.monthlyPlanAdjustmentHistory),vehicleRepairId:row.id,reason:text,requestedAt:at,previousApprovalStatus:row.approvalStatus});row.approvalStatus='REVISING';row.status='SCHEDULED';return{ok:true}
 }
 
 export function saveComponentTemporaryPlan(state,input,id=null,now=new Date()){

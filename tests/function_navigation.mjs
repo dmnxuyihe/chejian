@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { functionEntries, functionPath } from '../src/functions/catalog.js'
-import { navigationGroups, navigationEntries, navigationGroup, navigationId, navigationSearchText } from '../src/functions/navigation.js'
+import { navigationGroups, navigationEntries, navigationGroup, navigationId, navigationSearchText, withheldPlanEntries } from '../src/functions/navigation.js'
 import { resolveFunctionRoute, defaultFunctionEntry } from '../src/functions/routes.js'
 import { renderFunctionShell, functionHomePage, mountFunctionShell } from '../src/functions/index.js'
 
@@ -16,16 +16,19 @@ assert.equal(resolveFunctionRoute('#/planning/calendar').entry,defaultFunctionEn
 const ready=functionEntries.filter(entry=>entry.status==='implemented')
 const canonical=navigationGroups.flatMap(navigationEntries)
 assert.equal(navigationGroups.length,5)
-assert.equal(canonical.length,19)
+assert.equal(canonical.length,20)
+assert.ok(canonical.some(entry=>entry.id==='monthly-verification'))
+assert.ok(canonical.some(entry=>entry.id==='monthly-plan-approval'))
+assert.ok(canonical.every(entry=>!withheldPlanEntries.has(entry.id)))
 assert.equal(new Set(canonical.map(entry=>entry.id)).size,canonical.length)
-for(const entry of ready)assert.ok(canonical.some(item=>item.id===navigationId(entry)),entry.id)
+for(const entry of ready.filter(entry=>!withheldPlanEntries.has(entry.id)))assert.ok(canonical.some(item=>item.id===navigationId(entry)),entry.id)
 assert.match(navigationSearchText(canonical.find(entry=>entry.id==='tool-register')),/工具/)
 
 for(const entry of functionEntries){
   const html=renderFunctionShell({entry,pageHtml:'<h1>业务内容</h1>'})
   assert.ok(html.includes(`data-function-entry="${entry.id}"`))
   assert.equal((html.match(/data-nav-group=/g)||[]).length,5)
-  assert.equal((html.match(/class="function-item /g)||[]).length,19)
+  assert.equal((html.match(/class="function-item /g)||[]).length,canonical.length+1)
   assert.equal((html.match(/data-nav-group="[^"]+" open/g)||[]).length,navigationGroup(entry)?1:0)
   assert.doesNotMatch(html,/workspace-nav|workspace-location|function-primary-card|data-role-card|data-switch-role/)
   if(navigationGroup(entry))assert.ok(html.includes(`href="#/${functionPath(canonical.find(item=>item.id===navigationId(entry)))}" class="function-item active"`))

@@ -1,4 +1,5 @@
 import { formatLocalDateTime } from './derived.js'
+import { recordMonthlyApproval } from './planning-approval-records.js'
 import { buildResourceReport } from './resource-report.js'
 
 const MINUTE = 60000
@@ -9,7 +10,7 @@ const overlaps = (start, end, row) => start < row.end && row.start < end
 const unique = rows => [...new Set(rows)]
 const stable = value => JSON.stringify(value, (_, item) => item && typeof item === 'object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item)
 const sourceFields = {
-  vehicleRepairs: ['id','locomotiveNo','repairProgramId','plannedEntryAt','plannedExitAt','status','currentVersionId','priority'],
+  vehicleRepairs: ['id','locomotiveNo','repairProgramId','plannedEntryAt','plannedExitAt','status','approvalStatus','currentVersionId','priority'],
   schedules: ['id','vehicleRepairId','taskId','versionId','workstationId','plannedStartAt','plannedEndAt','actualStartAt','actualEndAt','status','isLocked'],
   scheduleVersions: ['id','vehicleRepairId','versionNo','status'],
   employeeAssignments: ['id','scheduleTaskId','employeeId','status'],
@@ -53,7 +54,7 @@ export function pc1Preflight(state, vehicleIds) {
   for (const id of ids) {
     const vehicle = state.vehicleRepairs.find(row => row.id === id)
     if (!vehicle) { issues.push('所选车辆已不存在'); continue }
-    if (!canPlanVehicle(state, vehicle)) issues.push(`${vehicle.locomotiveNo}已有执行记录或已结束，不能重新编排`)
+    if (!canPlanVehicle(state, vehicle)) issues.push(['SUBMITTED','REVIEWED','PUBLISHED'].includes(vehicle.approvalStatus) ? `${vehicle.locomotiveNo}已提交审核或发布，请先在月度计划中提交修改/调整申请后再排程` : `${vehicle.locomotiveNo}已有执行记录或已结束，不能重新编排`)
     const tasks = tasksFor(state, vehicle)
     if (!tasks.length) issues.push(`${vehicle.locomotiveNo}没有可用的修程工序配置`)
     if (tasks.some(task => !['构架','轮驱'].includes(task.process))) issues.push('本次PC1演示仅支持构架和轮驱修程')
@@ -304,8 +305,9 @@ export function confirmPc1Preview(state, submission={}) {
     const existing = next.planApprovalFlows.find(flow => flow.entityType === 'MONTHLY' && flow.entityId === vehicle.id && ['SUBMITTED','REVIEWED'].includes(flow.status))
     if (existing) continue
     const defaultNote=`${vehicle.locomotiveNo}排程已确认，共${confirmed.filter(row=>row.vehicleRepairId===vehicle.id).length}项工序，申请主管科长审核。`
-    next.planApprovalFlows.push({ id:flowId++, entityType:'MONTHLY', entityId:vehicle.id, status:'SUBMITTED', submittedAt:publishedAt, updatedAt:publishedAt, planName:String(submission.planName||`${String(vehicle.plannedEntryAt).slice(0,7)}月度检修计划`).trim().slice(0,100), submitterDepartment:String(submission.submitterDepartment||'计划编制').trim().slice(0,100), note:String(submission.note||defaultNote).trim().slice(0,500), history:[{ action:'SUBMIT', at:publishedAt, comment:String(submission.note||'检修排程确认后提交月度计划审核').trim().slice(0,500) }] })
+    next.planApprovalFlows.push({ id:flowId++, entityType:'MONTHLY', entityId:vehicle.id, versionId:versions.get(vehicle.id).id, status:'SUBMITTED', submittedAt:publishedAt, updatedAt:publishedAt, planName:String(submission.planName||`${String(vehicle.plannedEntryAt).slice(0,7)}月度检修计划`).trim().slice(0,100), submitterDepartment:String(submission.submitterDepartment||'计划编制').trim().slice(0,100), note:String(submission.note||defaultNote).trim().slice(0,500), history:[{ action:'SUBMIT', at:publishedAt, comment:String(submission.note||'检修排程确认后提交月度计划审核').trim().slice(0,500) }] })
   }
+  for(const flow of next.planApprovalFlows.filter(flow=>flow.entityType==='MONTHLY'&&selected.has(flow.entityId)&&flow.status==='SUBMITTED'))recordMonthlyApproval(next,flow,'SUBMIT',publishedAt)
   next.lastScheduleRunAt = publishedAt; next.selectedVehicleRepairId = preview.vehicleRepairIds[0]
   next.activityLog.unshift({ id: nextId(next.activityLog), time: publishedAt, type: '排程', text: `确认${selected.size}辆机车模拟排程，已提交月度计划审核` })
   delete next.pc1SchedulePreview

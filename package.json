@@ -13,6 +13,7 @@
     "db:schema": "node scripts/generate-schema.mjs",
     "test:db-init": "node tests/database_init.mjs",
     "test:planning": "node tests/planning_calendar.mjs",
+    "test:monthly-tools": "node tests/monthly_tools_integration.mjs && node tests/monthly_tools_ui.mjs",
     "test:monthly-schedule-approval": "node tests/monthly_schedule_approval.mjs",
     "test:workshop-calendar": "node tests/workshop_calendar.mjs",
     "db:seed-workshop-calendar": "node scripts/seed-workshop-calendar.mjs",

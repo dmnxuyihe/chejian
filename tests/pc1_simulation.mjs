@@ -5,7 +5,7 @@ import { simulatePc1, pc1Preflight, pc1PreviewIssues, movePc1Task, togglePc1Lock
 import { exportDemoSnapshot, parseDemoSnapshot } from '../src/core/demo-persistence.js'
 import { confirmedExit, planningTasks } from '../src/core/planning-view.js'
 import { formatLocalDateTime } from '../src/core/derived.js'
-import { processPlanFlow } from '../src/core/planning-json-workflow.js'
+import { processPlanFlow, requestMonthlyPlanAdjustment } from '../src/core/planning-json-workflow.js'
 
 const fixture = () => { const state = createState(); const { ids } = commitImport(state, parseCsv(templateCsv)); return { state, ids } }
 const deadline = '2026-11-15T18:00:00'
@@ -43,6 +43,8 @@ function verify(condition, message) { assert.ok(condition, message); assertions+
   verify(ids.every(id => confirmedExit(state,id)), 'approved schedules create exit markers')
   verify(state.pc1Dispatches.every(row => row.employeeIds.length && row.scheduleTaskIds.length && Array.isArray(row.materials)), 'dispatches carry actual task/person/supply lists')
   exportDemoSnapshot(state)
+  verify(!simulatePc1(state,ids,deadline).ok, 'published schedules require an adjustment request')
+  for(const id of ids)verify(requestMonthlyPlanAdjustment(state,id,'调整后重新排程').ok,'adjustment request enables replanning')
   const repeated = simulatePc1(state,ids,deadline)
   verify(repeated.ok && !repeated.issues.length, repeated.issues.join('\n'))
   state.pc1SchedulePreview = repeated.preview

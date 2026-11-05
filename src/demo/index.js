@@ -12,6 +12,8 @@ export const demoFunctions = [
 const extra = {
   plans:{ id:'plans',role:'planning',page:'plans',parent:'calendar' },
   dispatch:{ id:'dispatch',role:'scheduling',page:'gantt',parent:'schedule' },
+  approval:{ id:'approval',role:'approval',page:'monthly-plan-approval',parent:'schedule' },
+  verification:{ id:'verification',role:'planning',page:'monthly-stats',parent:'calendar' },
 }
 export function demoRoute(id='calendar') {
   return demoFunctions.find(item=>item.id===id) || extra[id] || demoFunctions[0]
@@ -19,6 +21,7 @@ export function demoRoute(id='calendar') {
 export function demoPath(role,page) {
   const paths = {
     'planning/plans':'plans','planning/calendar':'calendar','planning/g2-p2':'calendar',
+    'planning/monthly-stats':'verification','approval/monthly-plan-approval':'approval',
     'scheduling/dashboard':'schedule','scheduling/gantt':'dispatch','scheduling/workforce':'vehicle',
     'scheduling/vehicle':'vehicle','scheduling/control':'control','scheduling/exceptions':'control',
     'scheduling/workshop-calendar':'workshop',
@@ -26,7 +29,7 @@ export function demoPath(role,page) {
   return `demo/${paths[`${role}/${page}`] || 'calendar'}`
 }
 export function demoLinks(html) {
-  return html.replace(/href="#\/(planning|scheduling)\/([a-z0-9-]+)"/g,(_,role,page)=>`href="#/${demoPath(role,page)}"`)
+  return html.replaceAll('href="#/functions/plans/monthly-calendar"','href="#/demo/calendar"').replaceAll('href="#/functions/plans/plan-import"','href="#/demo/plans"').replaceAll('href="#/functions/plans/monthly-verification"','href="#/demo/verification"').replaceAll('href="#/functions/quality/monthly-plan-approval"','href="#/demo/approval"').replace(/href="#\/(planning|scheduling|approval)\/([a-z0-9-]+)"/g,(_,role,page)=>`href="#/${demoPath(role,page)}"`)
 }
 export function renderDemoShell({id,pageHtml}) {
   const route=demoRoute(id),active=route.parent||route.id

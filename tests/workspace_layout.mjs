@@ -35,7 +35,7 @@ const before=business()
 ctx.rerender();pc1PlanningPage.mount(ctx)
 assert.equal((html.match(/data-pc1-drag-task=/g)||[]).length,40)
 assert.ok(html.indexOf('整体排程方案')<html.indexOf('检修任务甘特图'))
-assert.match(html,/>确认并发布<\/button>/)
+assert.match(html,/>确认并提交审核<\/button>/)
 assert.doesNotMatch(html,/data-pc1-confirm[^>]*disabled/)
 const scheduleHtml=html
 controls.get('[data-pc1-toggle-inspector]').fire('click')

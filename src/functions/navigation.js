@@ -1,20 +1,19 @@
 import { functionEntries } from './catalog.js'
 
+export const withheldPlanEntries = new Set(['annual-plan','annual-stats','component-down-plan','component-up-plan','temporary-repair','planning-completion','component-temporary','vehicle-temp-approval','component-temp-approval'])
+
 // Navigation is independent of source modules and legacy URLs.
 // These four routes share ledger implementations; retain every route.
 export const navigationAliases = {
   'annual-stats':'annual-plan',
   'plan-import':'monthly-calendar',
-  'monthly-verification':'monthly-calendar',
   'component-up-plan':'component-down-plan',
-  'vehicle-temp-approval':'monthly-plan-approval',
-  'component-temp-approval':'monthly-plan-approval',
   'material-inventory':'resources',
   'equipment-register':'resources',
   'component-register':'component-ledger',
 }
 export const navigationGroups = [
-  {id:'planning',label:'计划与排程',icon:'calendar',entries:['annual-plan','monthly-calendar','component-down-plan','temporary-repair','planning-completion','schedule','dispatch']},
+  {id:'planning',label:'计划与排程',icon:'calendar',entries:['monthly-calendar','monthly-verification','schedule','dispatch']},
   {id:'operations',label:'作业与验收',icon:'worker',entries:['monthly-plan-approval','assignment','execution','inspection','acceptance']},
   {id:'monitoring',label:'查询与管控',icon:'chart',entries:['vehicle','workshop-calendar','vehicle-control','execution-tracking','progress-monitor']},
   {id:'resources',label:'资源台账',icon:'package',entries:['resources','tool-register','component-ledger','station-resources','resource-overview']},

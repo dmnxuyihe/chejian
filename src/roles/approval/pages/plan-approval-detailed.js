@@ -5,10 +5,10 @@ import { saveVehicleOperation } from '../../../shared/vehicle-details.js'
 
 const typeText={MONTHLY:'月度检修计划',TEMP_VEHICLE:'整车临修计划',TEMP_COMPONENT:'配件临修计划',COMPONENT_UP:'配件上车计划'}
 const statusText={SUBMITTED:'待审核',REVIEWED:'待审批发布',REJECTED:'已驳回',PUBLISHED:'已发布'}
-const views={'monthly-plan-approval':{label:'月度计划审批',types:['MONTHLY','COMPONENT_UP']},'vehicle-temp-approval':{label:'整车临修审批',types:['TEMP_VEHICLE']},'component-temp-approval':{label:'配件临修审批',types:['TEMP_COMPONENT']}}
+const views={'monthly-plan-approval':{label:'月度计划审批',types:['MONTHLY']},'vehicle-temp-approval':{label:'整车临修审批',types:['TEMP_VEHICLE']},'component-temp-approval':{label:'配件临修审批',types:['TEMP_COMPONENT']}}
 const targetName=(state,flow)=>flow.entityType==='MONTHLY'?(state.vehicleRepairs.find(x=>x.id===flow.entityId)?.locomotiveNo||'月度计划'):flow.entityType==='TEMP_VEHICLE'?(state.temporaryRepairPlans.find(x=>x.id===flow.entityId)?.locomotiveNo||'整车临修'):flow.entityType==='TEMP_COMPONENT'?(state.componentTemporaryPlans.find(x=>x.id===flow.entityId)?.serialNo||'配件临修'):`计划 #${flow.entityId}`
 const value=v=>v==null||v===''?'未填写':esc(v)
-const tabs=active=>`<nav class="plan-view-tabs plan-switch-tabs" aria-label="计划审批分类">${Object.entries(views).map(([id,item])=>`<a class="${active===id?'active':''}" href="#/functions/quality/${id}" ${active===id?'aria-current="page"':''}>${item.label}</a>`).join('')}</nav>`
+const tabs=active=>`<nav class="plan-view-tabs plan-switch-tabs" aria-label="计划审批分类">${Object.entries(views).filter(([id])=>id==='monthly-plan-approval'||id===active).map(([id,item])=>`<a class="${active===id?'active':''}" href="#/functions/quality/${id}" ${active===id?'aria-current="page"':''}>${item.label}</a>`).join('')}</nav>`
 
 const displayDate=input=>input?String(input).replace('T',' ').slice(0,16):'未填写'
 function monthlyApprovalDetail(state,flow){
@@ -16,10 +16,11 @@ function monthlyApprovalDetail(state,flow){
   if(!row)return '<p class="empty">月度计划不存在。</p>'
   const program=state.repairPrograms.find(x=>x.id===row.repairProgramId)
   const model=state.locomotiveModels.find(x=>x.id===program?.modelId)
-  const version=state.scheduleVersions.find(x=>x.id===row.currentVersionId)
-  const schedules=state.schedules.filter(x=>x.vehicleRepairId===row.id&&(!row.currentVersionId||x.versionId===row.currentVersionId)&&x.status!=='CANCELLED').sort((a,b)=>new Date(a.plannedStartAt)-new Date(b.plannedStartAt))
+  const versionId=flow.versionId??row.currentVersionId
+  const version=state.scheduleVersions.find(x=>x.id===versionId&&x.vehicleRepairId===row.id)
+  const schedules=state.schedules.filter(x=>x.vehicleRepairId===row.id&&x.versionId===versionId&&x.status!=='CANCELLED').sort((a,b)=>new Date(a.plannedStartAt)-new Date(b.plannedStartAt))
   const adjustment=[...(state.monthlyPlanAdjustmentHistory||[])].filter(x=>x.vehicleRepairId===row.id).sort((a,b)=>String(b.requestedAt).localeCompare(String(a.requestedAt)))[0]
-  const teams=schedule=>[...new Set((state.employeeAssignments||[]).filter(x=>x.scheduleTaskId===schedule.id&&x.status!=='CANCELLED').map(x=>state.employees.find(e=>e.id===x.employeeId)?.teamName).filter(Boolean))].join('、')||'未安排'
+  const teams=schedule=>[...new Set((state.employeeAssignments||[]).filter(x=>x.scheduleTaskId===schedule.id&&x.status!=='CANCELLED').map(x=>state.teams.find(t=>t.id===state.employees.find(e=>e.id===x.employeeId)?.teamId)?.name).filter(Boolean))].join('、')||'未安排'
   const conflictCount=schedules.filter(x=>x.conflictStatus&&x.conflictStatus!=='NONE').length
   return `<div class="notice notice-info"><strong>审批对象</strong><span>本次审核该车辆月度计划及当前版本完整排程，审核通过后进入主管副段长审批发布。</span></div>
   <h3>月度计划信息</h3><dl class="vehicle-facts-grid">

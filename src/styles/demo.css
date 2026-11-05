@@ -39,7 +39,7 @@ html.dark[data-demo-mode],html.dark[data-demo-mode] body,.dark .demo-shell{
 .demo-shell .plan-view-tabs a.active,.demo-shell .pc1-tabs .tab.active{color:var(--brand);border-color:var(--brand)}
 .demo-shell .pc1-tabs:empty{display:none}
 .demo-shell .plan-workspace{display:block}
-.demo-shell .pc-plan-layout{grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
+.demo-shell .pc-plan-layout{grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:stretch;grid-template-rows:minmax(0,1fr)}
 .demo-shell .pc-plan-calendar-card,.demo-shell .pc-plan-day-card{padding:20px;min-height:0}
 .demo-shell .pc-plan-panel-head h2,.demo-shell .desk-panel-head h2{font-size:15px;font-weight:500}
 .demo-shell .pc-plan-panel-head p,.demo-shell .desk-panel-head p,.demo-shell .pc-help{font-size:12px;line-height:1.7;color:var(--muted)}
@@ -72,7 +72,7 @@ html[data-demo-mode] .modal{background:var(--surface);border-color:var(--line);b
 html[data-demo-mode] .modal-head,html[data-demo-mode] .modal-actions{background:var(--surface);border-color:var(--line)}
 html[data-demo-mode] .modal .btn-primary{background:var(--primary);color:#fff}
 html[data-demo-mode] .pc1-attachments :is(img,video){max-height:340px;object-fit:contain}
-@media(max-width:1000px){.demo-shell .demo-topbar{gap:22px;padding:0 24px}.demo-nav{gap:20px}.demo-shell .demo-content{padding:26px 24px}.demo-shell .pc-plan-layout{grid-template-columns:1fr}.demo-shell .pc1-desk{grid-template-columns:1fr}.demo-shell .desk-settings{position:static}}
+@media(max-width:1000px){.demo-shell .demo-topbar{gap:22px;padding:0 24px}.demo-nav{gap:20px}.demo-shell .demo-content{padding:26px 24px}.demo-shell .pc-plan-layout{grid-template-columns:1fr;grid-template-rows:auto;block-size:auto}.demo-shell .pc1-desk{grid-template-columns:1fr}.demo-shell .desk-settings{position:static}}
 @media(max-width:650px){.demo-shell .demo-topbar{display:grid;grid-template-columns:1fr auto;height:auto;gap:12px;padding:16px 16px 0}.demo-brand{grid-column:1;font-size:17px}.demo-shell .demo-topbar>[data-theme-toggle]{grid-column:2;grid-row:1}.demo-nav{grid-column:1/-1;grid-row:2;justify-content:space-between;gap:12px;overflow-x:auto}.demo-nav>a{font-size:12px;min-height:42px;padding:0}.demo-shell .demo-content{padding:24px 16px}.demo-shell .page-header{align-items:flex-start;flex-wrap:wrap;gap:14px}.demo-shell .page-header h1{font-size:24px}.demo-shell .page-desc{font-size:12px}.demo-shell .page-actions{width:100%;margin:0}.demo-shell .page-actions>.select{width:100%;max-width:none}.demo-shell .pc-plan-calendar-card,.demo-shell .pc-plan-day-card{padding:16px}.demo-shell .pc1-tabs .tab{font-size:12px}.demo-task-count{padding:12px 16px}}
 @media(prefers-reduced-motion:reduce){.demo-shell *{scroll-behavior:auto}}
 
