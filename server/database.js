@@ -4,6 +4,7 @@ import { createState } from '../src/core/state.js'
 import { exportDemoSnapshot, parseDemoSnapshot } from '../src/core/demo-persistence.js'
 import { databaseBusinessCollections, fromDatabaseStatus, stateTables, toDatabaseStatus } from './state-mapping.js'
 import { prepareMaintenanceRecord } from './maintenance.js'
+import { applyToolCommand } from '../src/core/tool-management.js'
 
 // PostgreSQL's timestamp-without-time-zone values represent workshop local time.
 pg.types.setTypeParser(1082, value => value)
@@ -242,6 +243,25 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
         await client.query('COMMIT')
         return { revision: Number(meta.revision), savedAt: meta.updated_at.toISOString() }
       } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
+    },
+    async toolCommand(input,{hardware=false}={}) {
+      const definitions=JSON.parse(await fs.readFile(definitionPath,'utf8')),client=await pool.connect()
+      try {
+        await client.query('BEGIN')
+        const current=(await client.query(`SELECT revision FROM ${quotedSchema}.application_state WHERE singleton FOR UPDATE`)).rows[0]
+        const data=await readData(client,definitions)
+        const duplicate=data.toolManagement?.commands.some(c=>c.requestId===input.requestId)
+        if(!hardware&&!duplicate&&input.revision!==Number(current.revision))throw Object.assign(new Error('数据已更新，请刷新工具管理后重试，当前操作未提交'),{status:409})
+        const result=applyToolCommand(data,input,{hardware})
+        if(!duplicate){
+          const checked=exportDemoSnapshot(data).data
+          await client.query('SET CONSTRAINTS ALL DEFERRED')
+          await writeData(client,checked,definitions)
+          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=revision+1,updated_at=now() WHERE singleton`)
+        }
+        await client.query('COMMIT')
+        return {...result,revision:Number(current.revision)+(duplicate?0:1)}
+      }catch(error){await client.query('ROLLBACK');throw error}finally{client.release()}
     },
     async submitMaintenanceRecord(input) {
       const definitions = JSON.parse(await fs.readFile(definitionPath, 'utf8'))

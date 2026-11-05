@@ -1,4 +1,5 @@
 import { addMinutes, formatLocalDateTime, minutesBetween, taskOf, scheduleOf } from './derived.js'
+import { taskToolCheck } from './tool-management.js'
 
 const iso = (d) => formatLocalDateTime(d)
 const maxIso = (...items) => {
@@ -348,6 +349,8 @@ export function startTask(state, scheduleTaskId, employeeId) {
   const hasAssignment = state.employeeAssignments.some(a=>a.scheduleTaskId===schedule.id && a.employeeId===Number(employeeId) && a.status!=='CANCELLED')
   if (!hasAssignment) return {ok:false,message:'当前人员未分配该任务'}
   if (schedule.status !== 'NOT_STARTED') return {ok:false,message:schedule.status === 'IN_PROGRESS' ? '任务已经开始' : '任务当前状态不能开始'}
+  const tools=taskToolCheck(state,schedule.id)
+  if(!tools.ok)return tools
   schedule.status = 'IN_PROGRESS'
   schedule.actualStartAt = iso(new Date())
   vehicle.status = 'IN_PROGRESS'
@@ -515,6 +518,7 @@ function validateResource(state, collection, data, currentId = null) {
   if (['tools', 'materials', 'spareParts'].includes(collection) && (!Number.isFinite(Number(row.quantity)) || Number(row.quantity) < 0)) return { ok:false, message:'数量必须是非负数字' }
   if (collection === 'tools' && !Number.isInteger(Number(row.quantity))) return { ok:false, message:'工具数量必须是整数' }
   if (collection === 'tools') {
+    if(state.toolManagement?.assets.some(a=>a.toolId===currentId)&&Number(row.quantity)!==Number(state.tools.find(t=>t.id===currentId)?.quantity))return {ok:false,message:'已接管工具的数量须通过工具管理中的业务或盘点调整'}
     const cycle = row.inspection_cycle_months ?? row.inspectionCycleMonths
     if (cycle != null && cycle !== '' && (!Number.isInteger(Number(cycle)) || Number(cycle) < 0)) return { ok:false, message:'检修周期必须是非负整数' }
   }
@@ -630,6 +634,7 @@ export function deleteResource(state, collection, id) {
   if (collection === 'componentInstances' && state.componentAssignments.some(a => a.componentInstanceId === numericId && a.status !== 'CANCELLED')) {
     return { ok:false, message:'配件实例已经被排程使用，不能删除' }
   }
+  if(collection==='tools'&&state.toolManagement?.assets.some(a=>a.toolId===numericId))return {ok:false,message:'工具已有实物及流转台账，请在工具管理中办理停用或报废'}
   if ((collection === 'tools' && state.toolRequirements?.some(r => r.toolId === numericId)) ||
       (collection === 'materials' && state.materialRequirements?.some(r => r.materialId === numericId))) {
     return { ok:false, message:'该资源已有检修任务需求，不能删除，可改为停用' }

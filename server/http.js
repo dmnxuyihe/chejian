@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, timingSafeEqual } from 'node:crypto'
+import { toolAlerts } from '../src/core/tool-management.js'
 import { projectRoot } from './config.js'
 import { createPlanningService } from './planning.js'
 
@@ -29,6 +30,20 @@ export function createHandler(database) {
       if (url.pathname.startsWith('/api/')) {
         if (url.pathname === '/api/config' && req.method === 'GET') return json(res, 200, { storage: database ? 'postgresql' : 'local' })
         if (!database) return json(res, 503, { message: '当前为显式本地演示模式，未启用数据库' })
+        if(url.pathname==='/api/tools/commands'&&req.method==='POST'){
+          if(req.headers.origin&&new URL(req.headers.origin).host!==req.headers.host)return json(res,403,{message:'拒绝跨站写入'})
+          return json(res,200,await database.toolCommand(await body(req)))
+        }
+        if(url.pathname==='/api/tools/alerts'&&req.method==='GET'){
+          const current=await database.read();return json(res,200,{alerts:toolAlerts(current.snapshot.data),revision:current.revision})
+        }
+        if(url.pathname==='/api/tools/device-events'&&req.method==='POST'){
+          const token=process.env.TOOL_DEVICE_TOKEN,provided=req.headers['x-tool-device-token']
+          if(!token||token.length<24)return json(res,503,{message:'设备网关尚未配置，真实设备接入未启用'})
+          if(typeof provided!=='string'||Buffer.byteLength(provided)!==Buffer.byteLength(token)||!timingSafeEqual(Buffer.from(provided),Buffer.from(token)))return json(res,401,{message:'设备认证失败'})
+          const event=await body(req)
+          return json(res,200,await database.toolCommand({...event,type:'DEVICE_EVENT'},{hardware:true}))
+        }
         if (url.pathname === '/api/pc1/records' && req.method === 'POST') {
           if (req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return json(res, 403, { message: '拒绝跨站写入' })
           return json(res, 200, await database.submitMaintenanceRecord(await body(req)))

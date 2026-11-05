@@ -16,23 +16,23 @@ assert.equal(resolveFunctionRoute('#/planning/calendar').entry,defaultFunctionEn
 const ready=functionEntries.filter(entry=>entry.status==='implemented')
 const canonical=navigationGroups.flatMap(navigationEntries)
 assert.equal(navigationGroups.length,5)
-assert.equal(canonical.length,18)
+assert.equal(canonical.length,19)
 assert.equal(new Set(canonical.map(entry=>entry.id)).size,canonical.length)
 for(const entry of ready)assert.ok(canonical.some(item=>item.id===navigationId(entry)),entry.id)
-assert.match(navigationSearchText(canonical.find(entry=>entry.id==='resources')),/工具/)
+assert.match(navigationSearchText(canonical.find(entry=>entry.id==='tool-register')),/工具/)
 
 for(const entry of functionEntries){
   const html=renderFunctionShell({entry,pageHtml:'<h1>业务内容</h1>'})
   assert.ok(html.includes(`data-function-entry="${entry.id}"`))
   assert.equal((html.match(/data-nav-group=/g)||[]).length,5)
-  assert.equal((html.match(/class="function-item /g)||[]).length,19)
+  assert.equal((html.match(/class="function-item /g)||[]).length,canonical.length+1)
   assert.equal((html.match(/data-nav-group="[^"]+" open/g)||[]).length,navigationGroup(entry)?1:0)
   assert.doesNotMatch(html,/workspace-nav|workspace-location|function-primary-card|data-role-card|data-switch-role/)
   if(navigationGroup(entry))assert.ok(html.includes(`href="#/${functionPath(canonical.find(item=>item.id===navigationId(entry)))}" class="function-item active"`))
   for(const planned of functionEntries.filter(item=>item.status!=='implemented'))assert.ok(!html.includes(`href="#/${functionPath(planned)}"`))
 }
 const catalog=functionHomePage.render()
-assert.equal((catalog.match(/data-function-label=/g)||[]).length,18)
+assert.equal((catalog.match(/data-function-label=/g)||[]).length,canonical.length)
 assert.doesNotMatch(catalog,/function-pending|function-primary-card|data-function-group=/)
 
 // Minimal control harness tests handlers/state, not browser layout or real DOM behavior.
@@ -94,7 +94,7 @@ assert.equal(directoryGroups.filter(group=>!group.hidden).length,1)
 assert.equal(directoryGroups.flatMap(group=>group.items).filter(item=>!item.hidden).length,1)
 assert.equal(empty.hidden,true)
 search.value='不存在XYZ';search.fire('input');assert.equal(empty.hidden,false)
-search.value='';search.fire('input');assert.equal(directoryGroups.flatMap(group=>group.items).filter(item=>!item.hidden).length,18)
+search.value='';search.fire('input');assert.equal(directoryGroups.flatMap(group=>group.items).filter(item=>!item.hidden).length,canonical.length)
 const report={passed:true,kind:'route, rendered markup and event-handler unit checks',directRoutes:functionEntries.length,legacyRoutes:functionEntries.length,implementedRoutes:ready.length,navigationEntries:canonical.length,groups:navigationGroups.length,checks:['default monthly calendar','explicit catalog','all old and current deep links','no planned navigation','resource aliases','active group','desktop collapse state','mobile inert, focus selection, tab loop, Escape, scrim and link close in control harness','listener cleanup','directory alias search and empty state'],limitations:['Browser layout, CSS rendering, native focus/inert and real pointer behavior are not verified; local browser control is disabled.']}
 const out='test-artifacts/function-navigation-unit'
 await mkdir(out,{recursive:true});await writeFile(`${out}/report.json`,JSON.stringify(report,null,2));await writeFile(`${out}/catalog.html`,catalog)

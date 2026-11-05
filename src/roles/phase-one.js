@@ -10,6 +10,7 @@ import { vehicleCenterPage } from './scheduling/pages/vehicle-center.js'
 import { pageHeader } from '../shared/templates.js'
 import { workspaceArt, artKind } from '../shared/workspace-art.js'
 import { pageScope } from '../shared/page-scope.js'
+import { toolsPage } from './system-admin/pages/tools.js'
 
 const plannedPage = (roleLabel, section, label, scopeLabels) => ({
   implementationStatus: 'planned',
@@ -157,8 +158,10 @@ export const phaseOneRoles = Object.fromEntries(specs.map(([id,label,short,group
   groups.forEach(([section,labels],sectionIndex)=>labels.forEach((pageLabel,pageIndex)=>{
     const implementedId = implementations[id]?.[pageLabel]
     const idForPage = implementedId || pageId(sectionIndex,pageIndex)
-    if (!implementedId) pages[idForPage] = plannedPage(label,section,pageLabel,labels)
-    nav.push({id:idForPage,label:pageLabel,section,icon:implementedId ? 'task' : 'list',status:implementedId ? 'implemented' : 'planned'})
+    const toolsImplemented=id==='tool-management'
+    if(toolsImplemented)pages[idForPage]=toolsPage
+    else if (!implementedId) pages[idForPage] = plannedPage(label,section,pageLabel,labels)
+    nav.push({id:idForPage,label:pageLabel,section,icon:implementedId||toolsImplemented ? 'task' : 'list',status:implementedId||toolsImplemented ? 'implemented' : 'planned'})
   }))
   if (id === 'system-admin') nav.unshift(...adminResources)
   const defaultPage = id === 'system-admin' ? 'resources' : nav[0].id

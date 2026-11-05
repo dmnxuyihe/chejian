@@ -1,5 +1,6 @@
 import { milestoneError } from './vehicle-operations.js'
 import { createState } from './state.js'
+import { emptyToolManagement, validateToolManagement } from './tool-management.js'
 
 export const DEMO_STORAGE_KEY = 'rail-maintenance.pc1-demo.v1'
 const FORMAT = 'rail-maintenance-pc1'
@@ -25,6 +26,7 @@ function snapshotData(state) {
 
 function validateData(data) {
   if (!object(data)) throw new Error('备份中缺少演示数据')
+  if(data.toolManagement===undefined)data.toolManagement=emptyToolManagement()
   for (const key of ['maintenanceRecords', 'pc1Dispatches']) if (data[key] === undefined) data[key] = []
   // Upgrade pre-resource-list backups once; a deliberately empty new-format
   // requirement list remains empty.
@@ -122,6 +124,7 @@ function validateData(data) {
       }
     }
   }
+  validateToolManagement(data)
   return data
 }
 

@@ -3,6 +3,7 @@ import { tools, materials, spareParts } from '../data/simple-resources.js'
 import { repairPrograms, locomotiveModels, tasks, dependencies, teamRequirements, equipmentRequirements, componentRequirements, taskStepHints } from '../data/process.js'
 import { vehicleRepairs, scheduleVersions, schedules, initialEmployeeAssignments, initialEquipmentAssignments, initialComponentAssignments, initialExceptions } from '../data/schedule.js'
 import { toolRequirements, materialRequirements } from '../data/task-supplies.js'
+import { emptyToolManagement } from './tool-management.js'
 
 const clone = (v) => structuredClone(v)
 
@@ -21,6 +22,7 @@ export function createState() {
     workstations: clone(workstations),
     equipment: clone(equipment),
     tools: clone(tools),
+    toolManagement: emptyToolManagement(),
     materials: clone(materials),
     spareParts: clone(spareParts),
     toolRequirements: clone(toolRequirements),
