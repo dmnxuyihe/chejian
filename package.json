@@ -33,8 +33,8 @@
     "test:logic": "node tests/schedule_logic.mjs",
     "test:roles": "node tests/phase_one_roles.mjs",
     "test:navigation": "node tests/function_navigation.mjs",
-    "test:tools": "node tests/tool_management.mjs && node tests/tool_management_database.mjs && node tests/tool_workspace_ui.mjs",
-    "test": "node tests/phase_one_roles.mjs && node tests/schedule_logic.mjs && node tests/v01_acceptance.mjs && node tests/planning_calendar.mjs && node tests/demo_persistence.mjs && node tests/database_persistence.mjs && node tests/function_navigation.mjs && node tests/tool_management.mjs && node tests/tool_management_database.mjs && node tests/tool_workspace_ui.mjs && node tests/ui_smoke.mjs"
+    "test:tools": "node tests/tool_management.mjs && node tests/tool_management_database.mjs && node tests/tool_workspace_ui.mjs && node tests/tool_management_stress_1000.mjs",
+    "test": "node tests/phase_one_roles.mjs && node tests/schedule_logic.mjs && node tests/v01_acceptance.mjs && node tests/planning_calendar.mjs && node tests/demo_persistence.mjs && node tests/database_persistence.mjs && node tests/function_navigation.mjs && node tests/tool_management.mjs && node tests/tool_management_database.mjs && node tests/tool_workspace_ui.mjs && node tests/tool_management_stress_1000.mjs && node tests/ui_smoke.mjs"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",
