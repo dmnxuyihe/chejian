@@ -70,8 +70,9 @@ try {
   assert.equal(preciseDateErrors.body.rows[1].errors.find(error => error.field === '计划入段日期')?.message, '日期格式不支持；请填写 YYYY-MM-DD 或 YYYY/MM/DD')
   assert.equal(preciseDateErrors.body.rows[2].errors.find(error => error.field === '计划入段日期')?.message, '日期不能为空')
   const groupedErrorCsv = Buffer.from((await request(`/api/planning/import/${preciseDateErrors.body.id}/errors.csv`)).body).toString('utf8')
-  assert.ok(groupedErrorCsv.includes('机车编号；机型；计划入段日期'), 'multiple error fields must be joined in validation order')
-  assert.ok(groupedErrorCsv.includes('机车编号不能为空；机型不在有效字典中；日期不存在'), 'multiple reasons must align with their fields')
+  assert.ok(['原始行号','错误字段','错误值','错误原因'].every(header=>groupedErrorCsv.includes(header)), 'error CSV must only expose the erroneous field and value')
+  assert.ok(!groupedErrorCsv.includes('原始数据'), 'error CSV must not expose the complete source row')
+  assert.ok(groupedErrorCsv.includes('机车编号') && groupedErrorCsv.includes('机型') && groupedErrorCsv.includes('计划入段日期'), 'each erroneous field must be exported separately')
   await request(`/api/planning/import/preview/${preciseDateErrors.body.id}`, 'DELETE')
 
   const annualBook = buffers([
@@ -168,7 +169,8 @@ try {
   assert.equal(errorCsv.status, 200)
   const errorText = Buffer.from(errorCsv.body).toString('utf8')
   assert.ok(errorText.startsWith('\uFEFF'))
-  assert.match(errorText, /原始行号.*原始数据.*错误字段.*错误原因/)
+  assert.match(errorText, /原始行号.*错误字段.*错误值.*错误原因/)
+  assert.ok(!errorText.includes('原始数据'), 'error CSV must not contain complete source-row JSON')
   assert.ok(errorText.includes('累计走行公里') && errorText.includes('-1'), 'error CSV must include the field and original invalid value')
   await request(`/api/planning/import/preview/${mixedPreview.body.id}`, 'DELETE')
   assert.equal(safeCsvCell('=SUM(1,1)'), "\"'=SUM(1,1)\"")

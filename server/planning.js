@@ -28,12 +28,12 @@ function addError(row, field, message) {
 }
 
 function detailedErrorsCsv(rows) {
-  const output = [['原始行号', '原始数据', '错误字段', '错误原因']]
-  for (const row of rows) output.push([
+  const output = [['原始行号', '错误字段', '错误值', '错误原因']]
+  for (const row of rows) for (const error of row.errors) output.push([
     row.line,
-    JSON.stringify(row.raw || {}),
-    row.errors.map(error => error.field).join('；'),
-    row.errors.map(error => error.message).join('；'),
+    error.field,
+    row.raw?.[error.field] ?? '',
+    error.message,
   ])
   return `\uFEFF${output.map(row => row.map(safeCsvCell).join(',')).join('\r\n')}\r\n`
 }
@@ -233,7 +233,7 @@ export function createPlanningService(database) {
 
   function createRowKey(d) { return `${d.locomotiveNo}\0${d.repairProgramId}\0${d.plannedEntryAt}` }
 
-  async function calendarRows({ from, to, modelId, programId, locomotiveNo, vehicleId, entryOnly = false, planSource }) {
+  async function calendarRows({ from, to, modelId, programId, locomotiveNo, vehicleId, entryOnly = false, planSource, ownerDepot = '', repairSequence, status = '', approvalStatus = '' }) {
     const result = await pool.query(
       `SELECT vr.vehicle_repair_id, vr.locomotive_no, vr.repair_program_id,
               rp.repair_program_name, lm.model_id, lm.model_name,
@@ -261,7 +261,11 @@ export function createPlanningService(database) {
           AND ($4::bigint IS NULL OR rp.repair_program_id=$4)
           AND ($5::text = '' OR vr.locomotive_no ILIKE '%' || $5 || '%')
           AND ($8::text IS NULL OR ($8='NON_ANNUAL' AND vr.plan_source<>'ANNUAL') OR ($8<>'NON_ANNUAL' AND vr.plan_source=$8))
-        ORDER BY vr.planned_entry_at, vr.locomotive_no, vr.vehicle_repair_id`, [from || '1900-01-01', to || '2199-12-31', modelId || null, programId || null, locomotiveNo || '', vehicleId || null, entryOnly, planSource || null])
+          AND ($9::text = '' OR COALESCE(vr.owner_depot,'') ILIKE '%' || $9 || '%')
+          AND ($10::text = '' OR vr.status=$10)
+          AND ($11::text = '' OR vr.approval_status=$11)
+          AND ($12::integer IS NULL OR vr.repair_sequence=$12)
+        ORDER BY vr.planned_entry_at, vr.locomotive_no, vr.vehicle_repair_id`, [from || '1900-01-01', to || '2199-12-31', modelId || null, programId || null, locomotiveNo || '', vehicleId || null, entryOnly, planSource || null, ownerDepot, status, approvalStatus, repairSequence || null])
     return result.rows.map(row => ({
       id: Number(row.vehicle_repair_id), locomotiveNo: row.locomotive_no,
       repairProgramId: Number(row.repair_program_id), repairProgramName: row.repair_program_name,
@@ -402,6 +406,22 @@ export function createPlanningService(database) {
     return publicPreview(entry)
   }
 
+  async function deletePreviewRow(sessionId, previewId, line) {
+    const entry=requirePreview(sessionId,previewId)
+    if(entry.result)throw httpError(409,'导入已提交，不能删除预览数据')
+    const target=entry.rows.find(row=>row.line===Number(line))
+    if(!target)throw httpError(404,'预览行不存在')
+    const remaining=entry.rows.filter(row=>row.line!==target.line)
+    const matrix=[planHeaders,...remaining.map(row=>planFields.map(field=>row.raw?.[field.label]??''))]
+    const dictionary=await dictionaries(pool,schema)
+    const rows=normalizeRows(matrix,entry.importType,entry.period,dictionary)
+    const client=await pool.connect()
+    try{await applyDatabaseConflicts(client,schema,rows)}finally{client.release()}
+    entry.rows=rows;entry.warnings=rows.some(row=>row.warnings.length)?[...new Set(rows.flatMap(row=>row.warnings))]:[]
+    entry.expiresAtMs=Date.now()+ttl;entry.expiresAt=new Date(entry.expiresAtMs).toISOString()
+    return publicPreview(entry)
+  }
+
   async function commit(entry) {
     if (entry.result) return { ...entry.result, idempotent: true }
     if (entry.commitPromise) return entry.commitPromise
@@ -473,6 +493,7 @@ export function createPlanningService(database) {
     },
     async preview(input) { return preview(input) },
     async updatePreviewRow(sessionId,id,line,values){return updatePreviewRow(sessionId,id,line,values)},
+    async deletePreviewRow(sessionId,id,line){return deletePreviewRow(sessionId,id,line)},
     async cancel(sessionId, id) { const entry = requirePreview(sessionId, id); if (entry.result) throw httpError(409, '导入已提交，不能取消'); previews.delete(id); return { cancelled: true } },
     async confirm(sessionId, id) {
       const entry = requirePreview(sessionId, id)

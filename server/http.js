@@ -106,10 +106,13 @@ export function createHandler(database) {
           if (url.pathname === '/api/planning/plans' && req.method === 'GET') {
             const from = url.searchParams.get('from') || '', to = url.searchParams.get('to') || ''
             if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return json(res, 400, { message: '计划日期范围无效' })
-            for (const key of ['modelId', 'programId']) if (url.searchParams.get(key) && !/^\d+$/.test(url.searchParams.get(key))) return json(res, 400, { message: '筛选条件无效' })
+            for (const key of ['modelId', 'programId', 'repairSequence']) if (url.searchParams.get(key) && !/^\d+$/.test(url.searchParams.get(key))) return json(res, 400, { message: '筛选条件无效' })
             const planSource = url.searchParams.get('planSource') || ''
             if (planSource && !['ANNUAL', 'MONTHLY', 'NON_ANNUAL'].includes(planSource)) return json(res, 400, { message: '计划来源筛选无效' })
-            const result = await planning.plans({ from, to, modelId: url.searchParams.get('modelId'), programId: url.searchParams.get('programId'), locomotiveNo: (url.searchParams.get('locomotiveNo') || '').slice(0, 64), planSource })
+            const status=url.searchParams.get('status')||'',approvalStatus=url.searchParams.get('approvalStatus')||''
+            if(status&&!['UNSCHEDULED','SCHEDULED','IN_PROGRESS','COMPLETED'].includes(status))return json(res,400,{message:'排程状态筛选无效'})
+            if(approvalStatus&&!['DRAFT','SUBMITTED','REVIEWED','PUBLISHED','REJECTED','REVISING'].includes(approvalStatus))return json(res,400,{message:'审批状态筛选无效'})
+            const result = await planning.plans({ from, to, modelId: url.searchParams.get('modelId'), programId: url.searchParams.get('programId'), locomotiveNo: (url.searchParams.get('locomotiveNo') || '').slice(0, 64), ownerDepot:(url.searchParams.get('ownerDepot')||'').slice(0,64), repairSequence:url.searchParams.get('repairSequence'), status, approvalStatus, planSource })
             return json(res, 200, result)
           }
           if (url.pathname === '/api/planning/calendar' && req.method === 'GET') {
@@ -158,6 +161,7 @@ export function createHandler(database) {
             const input=await body(req)
             return json(res,200,await planning.updatePreviewRow(sessionId,decodeURIComponent(previewRow[1]),Number(previewRow[2]),input.values))
           }
+          if (previewRow && req.method === 'DELETE') return json(res,200,await planning.deletePreviewRow(sessionId,decodeURIComponent(previewRow[1]),Number(previewRow[2])))
           const preview = url.pathname.match(/^\/api\/planning\/import\/preview\/([^/]+)$/)
           if (preview && req.method === 'DELETE') return json(res, 200, await planning.cancel(sessionId, decodeURIComponent(preview[1])))
           return json(res, 404, { message: '计划管理接口不存在' })
