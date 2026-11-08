@@ -127,6 +127,17 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
     return mapStateRows(clientData, definitions, appPayload)
   }
 
+  async function assertNewSchedulesPublished(client, data) {
+    const incoming=new Set((data.schedules||[]).filter(row=>!['CANCELLED','CANCELED'].includes(String(row.status).toUpperCase())).map(row=>Number(row.vehicleRepairId)).filter(Number.isSafeInteger))
+    if(!incoming.size)return
+    const existing=(await client.query(`SELECT DISTINCT vehicle_repair_id FROM ${quotedSchema}.vehicle_repair_schedule WHERE status NOT IN ('CANCELLED','CANCELED')`)).rows.map(row=>Number(row.vehicle_repair_id))
+    const added=[...incoming].filter(id=>!existing.includes(id))
+    if(!added.length)return
+    const allowed=(await client.query(`SELECT DISTINCT i.vehicle_repair_id FROM ${quotedSchema}.monthly_plan p JOIN ${quotedSchema}.monthly_plan_item i ON i.plan_version_id=p.current_published_version_id WHERE i.vehicle_repair_id=ANY($1::bigint[]) AND NOT i.is_cancelled`,[added])).rows.map(row=>Number(row.vehicle_repair_id))
+    const denied=added.filter(id=>!allowed.includes(id))
+    if(denied.length)throw Object.assign(new Error(`车辆计划尚未发布，不能进入检修排程：${denied.join('、')}`),{status:409})
+  }
+
   function addResourceDemoRequirements(data) {
     const defaults = createState()
     if (!data.materials.some(row => row.name === 'O形圈')) {
@@ -148,6 +159,41 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
       data[key] = defaults[key].map(row => ({ ...row, [idField]: idMap.get(row[idField]) }))
     }
     return data
+  }
+
+  async function migrateLegacyMonthlyPlans(client) {
+    const existing = await client.query(`SELECT COUNT(*)::int AS count FROM ${quotedSchema}.monthly_plan`)
+    if (existing.rows[0].count) return false
+    const legacy = await client.query(`
+      SELECT vr.*,
+        EXISTS (
+          SELECT 1 FROM ${quotedSchema}.schedule_version sv
+          WHERE sv.vehicle_repair_id=vr.vehicle_repair_id
+            AND sv.status IN ('PUBLISHED','CURRENT')
+            AND (vr.current_version_id IS NULL OR sv.version_id=vr.current_version_id)
+        ) AS has_published_schedule
+      FROM ${quotedSchema}.vehicle_repair vr
+      WHERE COALESCE(vr.plan_source,'MONTHLY') <> 'ANNUAL'
+      ORDER BY vr.planned_entry_at,vr.vehicle_repair_id`)
+    const groups = new Map()
+    for (const row of legacy.rows) {
+      const date = String(row.planned_entry_at).slice(0, 10), key = date.slice(0, 7)
+      if (!/^\d{4}-\d{2}$/.test(key)) continue
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key).push(row)
+    }
+    for (const [month, rows] of groups) {
+      const [year, monthNumber] = month.split('-').map(Number)
+      const plan = (await client.query(`INSERT INTO ${quotedSchema}.monthly_plan(plan_year,plan_month,plan_title,title_source) VALUES($1,$2,$3,'DEFAULT') RETURNING monthly_plan_id`, [year, monthNumber, `${year}年${monthNumber}月检修计划`])).rows[0]
+      let versionNo = 0
+      for (const [published, selected] of [[true, rows.filter(row => row.has_published_schedule)], [false, rows.filter(row => !row.has_published_schedule)]]) {
+        if (!selected.length) continue
+        const version = (await client.query(`INSERT INTO ${quotedSchema}.monthly_plan_version(monthly_plan_id,version_no,owner_role,version_status,snapshot_title,published_at) VALUES($1,$2,'PLANNER',$3,$4,$5) RETURNING plan_version_id`, [plan.monthly_plan_id, ++versionNo, published ? 'PUBLISHED' : 'DRAFT', `${year}年${monthNumber}月检修计划`, published ? new Date() : null])).rows[0]
+        for (const row of selected) await client.query(`INSERT INTO ${quotedSchema}.monthly_plan_item(plan_version_id,stable_item_key,vehicle_repair_id,locomotive_no,repair_program_id,planned_entry_at,owner_bureau,owner_depot,repair_sequence,mileage_km,remark,change_type) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, [version.plan_version_id, `legacy-${row.vehicle_repair_id}`, row.vehicle_repair_id, row.locomotive_no, row.repair_program_id, row.planned_entry_at, row.owner_bureau, row.owner_depot, row.repair_sequence, row.mileage_km, row.remark, published ? 'UNCHANGED' : 'ADDED'])
+        if (published) await client.query(`UPDATE ${quotedSchema}.monthly_plan SET current_published_version_id=$1,updated_at=CURRENT_TIMESTAMP WHERE monthly_plan_id=$2`, [version.plan_version_id, plan.monthly_plan_id])
+      }
+    }
+    return groups.size > 0
   }
 
   async function readLegacyV1(client) {
@@ -193,19 +239,24 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
               migrated = true
             } else await writeData(client, initialData, definitions)
           } else await writeData(client, initialData, definitions)
-          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=1,schema_version=3,updated_at=now() WHERE singleton`)
+          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=1,schema_version=4,updated_at=now() WHERE singleton`)
           initialized = !migrated
         } else if (Number(meta.rows[0].schema_version) < 2) {
           const data = await readLegacyV1(client)
           await writeData(client, addResourceDemoRequirements(data), definitions)
-          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=revision+1,schema_version=3,updated_at=now() WHERE singleton`)
+          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=revision+1,schema_version=4,updated_at=now() WHERE singleton`)
           migrated = true
         } else if (Number(meta.rows[0].schema_version) < 3) {
           const data = addResourceDemoRequirements(await readData(client, definitions))
           await writeData(client, data, definitions)
-          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=revision+1,schema_version=3,updated_at=now() WHERE singleton`)
+          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=revision+1,schema_version=4,updated_at=now() WHERE singleton`)
           migrated = true
         }
+        const monthlyMigrated = await migrateLegacyMonthlyPlans(client)
+        if (monthlyMigrated) {
+          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=revision+$1,schema_version=4,updated_at=now() WHERE singleton`, [migrated ? 0 : 1])
+          migrated = true
+        } else await client.query(`UPDATE ${quotedSchema}.application_state SET schema_version=4 WHERE singleton AND schema_version<4`)
         if (exists.rows[0].legacy) {
           const legacyTables = ['resource_assignments','schedules','schedule_versions','vehicle_repairs','reference_data','metadata']
           const legacyPresent = await client.query(`SELECT count(*)::int AS count FROM pg_tables WHERE schemaname=$1 AND tablename=ANY($2::text[])`, [schema, legacyTables])
@@ -237,6 +288,7 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
         await client.query('BEGIN')
         const current = (await client.query(`SELECT revision FROM ${quotedSchema}.application_state WHERE singleton FOR UPDATE`)).rows[0]
         if (Number(current.revision) !== revision) throw Object.assign(new Error('其他页面已更新数据库，请先备份当前修改，再加载数据库最新数据'), { status: 409 })
+        await assertNewSchedulesPublished(client,data)
         await client.query('SET CONSTRAINTS ALL DEFERRED')
         await writeData(client, data, definitions)
         const meta = (await client.query(`UPDATE ${quotedSchema}.application_state SET revision=revision+1,updated_at=now() WHERE singleton RETURNING revision,updated_at`)).rows[0]

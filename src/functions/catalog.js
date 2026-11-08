@@ -59,7 +59,7 @@ export const primaryFunctions=[
   ['vehicle','单车查询','train'],['workshop-calendar','车间日历','equipment'],['vehicle-control','整车管控','inspection'],
 ].map(([id,label,icon])=>({id,label,icon}))
 const aliases={'planning/calendar':'monthly-calendar','scheduling/vehicle':'vehicle','scheduling/legacy-exceptions':'execution-tracking'}
-export const presentationViews={'monthly-calendar':'calendar',schedule:'schedule',dispatch:'dispatch',vehicle:'vehicle','workshop-calendar':'workshop','vehicle-control':'control'}
+export const presentationViews={schedule:'schedule',dispatch:'dispatch',vehicle:'vehicle','workshop-calendar':'workshop','vehicle-control':'control'}
 export const functionPath=entry=>`functions/${entry.group}/${entry.id}`
 export function functionForSource(role,page){
   const source=`${role}/${page||roles[role]?.defaultPage}`

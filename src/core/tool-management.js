@@ -304,7 +304,8 @@ export function validateToolManagement(state){
   if(!m||m.version!==1)fail('工具管理数据版本无效')
   if(!Array.isArray(state.approvalRecords))fail('审核记录集合无效')
   for(const approval of state.approvalRecords){
-    if(!Number.isSafeInteger(approval.id)||approval.id<1||typeof approval.businessType!=='string'||!Number.isSafeInteger(approval.businessId)||approval.businessId<1||!['PENDING','APPROVED','REJECTED'].includes(approval.approvalStatus))fail('审核记录格式无效')
+    const allowedApprovalStatuses=approval.businessType==='MONTHLY_PLAN_APPLICATION'?['PENDING','APPROVED','REJECTED','WITHDRAWN']:['PENDING','APPROVED','REJECTED']
+    if(!Number.isSafeInteger(approval.id)||approval.id<1||typeof approval.businessType!=='string'||!Number.isSafeInteger(approval.businessId)||approval.businessId<1||!allowedApprovalStatuses.includes(approval.approvalStatus))fail('审核记录格式无效')
     if(approval.businessType==='TOOL_DISPOSAL'){
       const disposal=m.disposals.find(r=>r.id===approval.businessId);if(!disposal)fail('工具审核记录缺少业务单据')
       if(disposal.status!==approval.approvalStatus)fail('工具审核状态与遗失报废单不一致')
