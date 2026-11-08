@@ -1,6 +1,6 @@
 import { milestoneError } from './vehicle-operations.js'
 import { createState } from './state.js'
-import { emptyToolManagement, validateToolManagement } from './tool-management.js'
+import { emptyToolManagement, validateToolManagement, upgradeToolCountAvailability } from './tool-management.js'
 
 export const DEMO_STORAGE_KEY = 'rail-maintenance.pc1-demo.v1'
 const FORMAT = 'rail-maintenance-pc1'
@@ -141,6 +141,7 @@ function validateData(data) {
       }
     }
   }
+  upgradeToolCountAvailability(data)
   validateToolManagement(data)
   return data
 }

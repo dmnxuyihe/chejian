@@ -6,12 +6,13 @@ import {createDatabase} from '../server/database.js'
 import {loadConfig} from '../server/config.js'
 import {createHandler} from '../server/http.js'
 import {exportDemoSnapshot} from '../src/core/demo-persistence.js'
+import {setupToolWarehouses} from '../scripts/setup-tool-warehouses.mjs'
 
 const schema=`pc1_test_merge_ui_${Date.now()}_${process.pid}`,db=createDatabase({...loadConfig(),schema})
 let server,browser
 const checks=[],errors=[],out='test-artifacts/monthly-tools-merge'
 try{
-  await db.init();const initial=await db.read()
+  await db.init();await setupToolWarehouses(db,{backup:false});const initial=await db.read()
   server=http.createServer(createHandler(db));await new Promise(r=>server.listen(0,'127.0.0.1',r))
   const base=`http://127.0.0.1:${server.address().port}`
   browser=await chromium.launch({channel:process.platform==='win32'?'msedge':undefined,headless:true})
@@ -81,14 +82,14 @@ try{
   assert.equal((await db.read()).snapshot.data.vehicleRepairs.find(v=>v.locomotiveNo==='MERGE-UI-A').approvalStatus,'REVISING')
   checks.push('已发布计划先填写调整申请，再进入待修改状态')
 
-  await page.goto(base+'/#/functions/assets/tool-register');await page.locator('[data-tool-tab="ledger"]').waitFor()
-  for(const tab of ['circulation','service','alerts','devices','ledger'])await page.locator(`[data-tool-tab="${tab}"]`).click()
-  await page.locator('[data-tool-action="warehouse"]').first().click()
-  await page.locator('[data-f="code"]').fill('UI-W');await page.locator('[data-f="name"]').fill('浏览器工具库');await page.locator('[data-f="actor"]').fill('工具经办')
+  await page.goto(base+'/#/functions/assets/tool-register');await page.locator('[data-tool-workspace]').waitFor()
+  await page.locator('[data-tool-table-action="tool-data"]').click()
+  await page.locator('[data-base-tab="categories"]').click();await page.locator('[data-base-action="add"]').click()
+  await page.locator('[data-f="code"]').fill('UI-C');await page.locator('[data-f="name"]').fill('浏览器工具分类');await page.locator('[data-f="actor"]').fill('工具经办')
   await page.locator('.modal [data-modal-confirm]').click();await page.locator('.modal').waitFor({state:'detached'})
-  assert.ok((await db.read()).snapshot.data.toolManagement.warehouses.some(w=>w.code==='UI-W'))
+  assert.ok((await db.read()).snapshot.data.toolManagement.categories.some(w=>w.code==='UI-C'))
   assert.ok((await db.read()).snapshot.data.planApprovalFlows.length>=2)
-  checks.push('工具五个视图可切换，建库实际保存且不覆盖月度审批')
+  checks.push('工具大表可打开，分类实际保存且不覆盖月度审批')
 
   for(const [month,days] of [['2027-02',28],['2028-02',29],['2026-11',30],['2027-01',31]]){
     const current=await db.read()

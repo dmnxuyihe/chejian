@@ -10,7 +10,7 @@ const hours = minutes => `${n(minutes/60)} 小时`
 const basis = use => ({process:'工艺表用量',demo:'演示用量',manual:'已核对用量'}[use.basis]||'用量待核对')
 const time = use => use.timed?`${fmtFullDateTime(use.plannedStartAt)}—${fmtFullDateTime(use.plannedEndAt)}`:'尚未排程'
 const labelKind = report => !report.rows.length?'暂无有效任务':report.rows.some(r=>r.planKind==='preview')?'模拟预览':report.rows.some(r=>r.planKind==='draft')?'待确认安排':report.unscheduled?'待排程':'正式排程'
-const edit = (kind,id,readOnly) => readOnly?'':`<button class="btn btn-sm" data-resource-edit="${kind}" data-resource-id="${id}">核对可用量</button>`
+const edit = (kind,id,readOnly) => readOnly?'':kind==='tools'?'<a class="btn btn-sm" href="#/functions/assets/tool-register" data-resource-tools>工具管理</a>':`<button class="btn btn-sm" data-resource-edit="${kind}" data-resource-id="${id}">核对可用量</button>`
 const taskNames = rows => [...new Set(rows.map(r=>`${r.vehicle.locomotiveNo} · ${r.task.name}`))].map(v=>esc(v)).join('、')
 function table(headers,rows,empty){return `<div class="table-wrap"><table><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')||`<tr><td colspan="${headers.length}" class="empty">${empty}</td></tr>`}</tbody></table></div>`}
 function notices(report){

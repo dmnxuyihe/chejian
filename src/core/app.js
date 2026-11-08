@@ -1,5 +1,5 @@
 import { createState } from './state.js'
-import { openModal, toast } from './ui.js'
+import { openModal, toast, closeRouteModals } from './ui.js'
 import { functionHomePage, renderFunctionShell, mountFunctionShell } from '../functions/index.js'
 import { functionForSource, functionPath, presentationViews } from '../functions/catalog.js'
 import { resolveFunctionRoute, defaultFunctionEntry } from '../functions/routes.js'
@@ -107,8 +107,11 @@ function bindShell(role = null) {
   }))
 }
 
+let renderedHash=null
 export function render(persist = true) {
   if (!initialized) return
+  if(renderedHash!==null&&renderedHash!==location.hash&&!closeRouteModals()){location.hash=renderedHash;return}
+  renderedHash=location.hash
   if (persist !== false) demoPersistence.save()
   const route=parseRoute()
   document.documentElement.toggleAttribute('data-demo-mode',route.type==='demo')

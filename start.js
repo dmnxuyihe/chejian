@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process'
 import { loadConfig } from './server/config.js'
 import { createDatabase } from './server/database.js'
 import { createHandler } from './server/http.js'
+import { setupToolWarehouses } from './scripts/setup-tool-warehouses.mjs'
 
 const config = loadConfig()
 const portArg = process.argv.find((v) => v.startsWith('--port='))
@@ -12,7 +13,7 @@ const host = process.argv.find(v => v.startsWith('--host='))?.split('=')[1] || p
 const localDemo = process.argv.includes('--local-demo')
 const database = localDemo ? null : createDatabase(config)
 if (database) {
-  try { await database.init(); console.log(`PostgreSQL已连接，数据区：${config.schema}`) }
+  try { await database.init(); await setupToolWarehouses(database); console.log(`PostgreSQL已连接，数据区：${config.schema}`) }
   catch (error) { console.error('PostgreSQL初始化失败：', error.code || error.name, '请检查.env配置与数据库服务。'); await database.close(); process.exit(1) }
 }
 const server = http.createServer(createHandler(database))

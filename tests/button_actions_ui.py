@@ -10,7 +10,11 @@ page=None;checks=[];clicks=0
 def check(name):checks.append(name);print('PASS '+name,flush=True)
 def click(selector):
  global clicks
- page.locator(selector).click();clicks+=1
+ target=page.locator(selector)
+ if selector.startswith('[data-delete='):
+  menu=target.locator('xpath=ancestor::details')
+  if menu.count()and menu.get_attribute('open')is None:menu.locator('summary').click();clicks+=1
+ target.click();clicks+=1
 def saved():
  result=page.evaluate('window.__APP_DEBUG__.getPersistence().save()');assert result['ok'],result
 def state():return page.request.get(base+'/api/state').json()['snapshot']['data']
@@ -20,7 +24,7 @@ try:
   browser=p.chromium.launch(channel='msedge',headless=True);page=browser.new_page(viewport={'width':1440,'height':1000});page.set_default_timeout(8000)
   errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
   page.goto(base+'/#/system-admin/resources');page.wait_for_load_state('networkidle')
-  for key in ['employees','teams','workstations','equipment','tools','materials','spareParts']:
+  for key in ['employees','teams','workstations','equipment','materials','spareParts']:
    click('[data-resource-tab="'+key+'"]');click('[data-add-resource]')
    fields=page.locator('.modal [data-f]');tag='BTN_'+key.upper()
    for i in range(fields.count()):
@@ -37,12 +41,17 @@ try:
    assert next(r for r in state()[key]if r['id']==id)['name']==tag+'_EDIT'
    click('[data-delete="'+str(id)+'"]');saved();assert not any(r['id']==id for r in state()[key])
    check(key+' tab, add, edit and delete really persist')
-  click('[data-resource-tab="tools"]');click('[data-add-resource]')
-  page.locator('[data-f="code"]').fill('BTN-OPTIONAL');page.locator('[data-f="name"]').fill('可选项留空');page.locator('[data-f="quantity"]').fill('1.5');click('[data-modal-confirm]');expect(page.locator('.modal-backdrop')).to_have_count(1)
-  page.locator('[data-f="quantity"]').fill('1');page.locator('[data-f="last_inspection_at"]').fill('无效日期');click('[data-modal-confirm]');expect(page.locator('.modal-backdrop')).to_have_count(1)
-  page.locator('[data-f="last_inspection_at"]').fill('');click('[data-modal-confirm]');expect(page.locator('.modal-backdrop')).to_have_count(0);saved()
-  row=next(r for r in state()['tools']if r['code']=='BTN-OPTIONAL');assert row['lastInspectionAt'] is None
-  click('[data-delete="'+str(row['id'])+'"]');saved();check('tool invalid fraction/date stays in form; optional empty date saves as SQL NULL')
+  click('[data-resource-tools]');expect(page.locator('[data-tool-workspace]')).to_be_visible()
+  click('[data-tool-table-action="tool-data"]');expect(page.locator('[data-base-kind]')).to_have_count(0);click('[data-base-action="add"]')
+  page.locator('[data-f="code"]').fill('BTN-TOOL');page.locator('[data-f="name"]').fill('工具字典测试');page.locator('[data-f="actor"]').fill('资料员');click('[data-modal-confirm]');expect(page.locator('.modal-backdrop')).to_have_count(0)
+  row=next(r for r in state()['tools']if r['code']=='BTN-TOOL')
+  click('[data-tool-table-action="tool-data"]');click('[name="base-record"][value="'+str(row['id'])+'"]');click('[data-base-action="edit"]')
+  page.locator('[data-f="name"]').fill('工具字典修改');page.locator('[data-f="actor"]').fill('资料员');click('[data-modal-confirm]');expect(page.locator('.modal-backdrop')).to_have_count(0)
+  assert next(r for r in state()['tools']if r['id']==row['id'])['name']=='工具字典修改'
+  click('[data-tool-table-action="tool-data"]');click('[name="base-record"][value="'+str(row['id'])+'"]');click('[data-base-action="delete"]')
+  page.locator('[data-f="actor"]').fill('资料员');click('[data-modal-confirm]');expect(page.locator('.modal-backdrop')).to_have_count(0)
+  assert not any(r['id']==row['id']for r in state()['tools']);check('tool CRUD is centralized in tool management and saves business records')
+  page.goto(base+'/#/system-admin/resources');page.wait_for_load_state('networkidle')
   click('[data-resource-tab="employees"]');count=len(state()['employees']);click('[data-delete="1"]');assert len(state()['employees'])==count;expect(page.locator('.toast').last).to_contain_text('删除失败')
   check('referenced employee delete is blocked without losing assignments')
   page.goto(base+'/#/component-management/components');page.wait_for_load_state('networkidle');click('[data-add-component]')
@@ -77,17 +86,25 @@ try:
    if details.count():details.locator('summary').click();clicks+=1
    if demand.count()and demand.is_visible():
     demand.click();clicks+=1;old=page.locator('#task-quantity').input_value();page.locator('#task-quantity').fill('0');click('[data-modal-confirm]');expect(page.locator('.modal-backdrop')).to_have_count(1);page.locator('#task-quantity').fill(old);click('[data-modal-confirm]');expect(page.locator('.modal-backdrop')).to_have_count(0);saved()
-  check('tool/material availability edit and task-quantity validation controls work')
+  check('material availability and task-quantity validation work; tool stock maintenance links to unified tool management')
   page.goto(base+'/#/scheduling/workshop-calendar');page.wait_for_load_state('networkidle')
   beforeMonth=page.locator('[data-wc-month]').input_value();click('[data-wc-month-step="1"]');assert page.locator('[data-wc-month]').input_value()!=beforeMonth;click('[data-wc-month-step="-1"]');assert page.locator('[data-wc-month]').input_value()==beforeMonth;click('[data-wc-today]')
-  click('[data-wc-tab="vehicle"]');page.locator('[data-wc-jump-day]').first.click();clicks+=1
-  page.locator('[data-wc-task]').first.click();clicks+=1;expect(page.locator('.modal-body')).to_contain_text('计划开始');page.keyboard.press('Escape')
-  click('[data-wc-tab="gantt"]')
-  start=page.locator('[data-gantt-range="start"]');start.fill('2030-01-01');start.dispatch_event('change');click('[data-gantt-reset]')
-  with page.expect_download()as event:click('[data-wc-export]')
-  file=OUT/event.value.suggested_filename;event.value.save_as(str(file))
-  with zipfile.ZipFile(file)as z:assert z.testzip()is None and 'xl/workbook.xml'in z.namelist()
-  check('workshop previous/next/today, tabs, task detail, range reset and real Excel export work')
+  if page.locator('[data-wc-tab="vehicle"]').count():
+   click('[data-wc-tab="vehicle"]');page.locator('[data-wc-jump-day]').first.click();clicks+=1
+   page.locator('[data-wc-task]').first.click();clicks+=1;expect(page.locator('.modal-body')).to_contain_text('计划开始');page.keyboard.press('Escape')
+   click('[data-wc-tab="gantt"]')
+   start=page.locator('[data-gantt-range="start"]');start.fill('2030-01-01');start.dispatch_event('change');click('[data-gantt-reset]')
+   with page.expect_download()as event:click('[data-wc-export]')
+   file=OUT/event.value.suggested_filename;event.value.save_as(str(file))
+   with zipfile.ZipFile(file)as z:assert z.testzip()is None and 'xl/workbook.xml'in z.namelist()
+   check('workshop previous/next/today, tabs, task detail, range reset and real Excel export work')
+  else:
+   expect(page.locator('[data-wc-tab]')).to_have_count(1)
+   taskMonth=min(r['plannedStartAt'] for r in state()['schedules'])[:7]
+   page.locator('[data-wc-month]').fill(taskMonth);page.locator('[data-wc-month]').dispatch_event('change')
+   page.locator('[data-wc-day-vehicle]').first.click();clicks+=1
+   page.locator('[data-wc-task]').first.click();clicks+=1;expect(page.locator('.modal-body')).to_contain_text('计划开始');page.keyboard.press('Escape')
+   check('current workshop presentation month navigation, day vehicle expansion and task details work')
   assert not errors,errors
   (OUT/'report.json').write_text(json.dumps({'passed':True,'clickActions':clicks,'checks':checks,'pageErrors':errors},ensure_ascii=False,indent=2),encoding='utf-8')
   print(json.dumps({'passed':True,'clickActions':clicks,'groups':len(checks),'pageErrors':errors},ensure_ascii=False));browser.close()

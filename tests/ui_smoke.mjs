@@ -37,8 +37,13 @@ try {
   await page.locator('[data-add-resource]').click()
   await page.locator('[role="dialog"]').waitFor()
   await page.locator('.modal-head [data-modal-close]').click()
-  await page.locator('[data-resource-tab="tools"]').click()
-  assert.equal(await page.locator('[data-add-resource]').count(),1)
+  assert.equal(await page.locator('[data-resource-tab="tools"]').count(),0)
+  await page.locator('[data-resource-tools]').click()
+  await page.locator('[data-tool-workspace]').waitFor()
+  assert.equal(await page.locator('[data-tool-operation-group]').count(),1)
+  await page.locator('[data-tool-table-action="tool-data"]').click()
+  assert.equal(await page.locator('[data-base-kind]').count(),0)
+  await page.locator('.modal-head [data-modal-close]').click()
 
   // A disposable local fixture exercises the existing execution controls.
   await page.evaluate(async()=>{

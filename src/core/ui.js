@@ -22,7 +22,25 @@ export function toast(title, message='', type='success') {
 }
 
 let modalSequence = 0
-export function openModal({ title, body, confirmText='确认', cancelText='取消', onConfirm, wide=false }) {
+const suspendedModals=new Set()
+let closingRoute=false
+export function openModalChild(parent,open,onReturn){
+  const scroll=parent.querySelector('.modal-body')?.scrollTop||0,focus=document.activeElement
+  suspendedModals.add(parent);parent.remove()
+  let result
+  try{result=open()}catch(error){suspendedModals.delete(parent);document.body.append(parent);throw error}
+  const child=result?.classList?.contains('modal-backdrop')?result:document.querySelector('.modal-backdrop:last-of-type')
+  const restore=()=>{suspendedModals.delete(parent);if(closingRoute)return;if(onReturn?.()===false)return;document.body.append(parent);const body=parent.querySelector('.modal-body');if(body)body.scrollTop=scroll;if(focus?.isConnected)focus.focus({preventScroll:true})}
+  if(child)child.addEventListener('modal:closed',restore,{once:true});else restore()
+  return result
+}
+export function closeRouteModals(){
+  closingRoute=true
+  const dialogs=[...document.querySelectorAll('.modal-backdrop')].reverse()
+  if(dialogs.some(w=>w.closeModal?.('route')===false)){closingRoute=false;return false}
+  suspendedModals.clear();closingRoute=false;return true
+}
+export function openModal({ title, body, confirmText='确认', cancelText='取消', onConfirm, beforeClose, wide=false }) {
   const opener = document.activeElement
   const titleId = `modal-title-${++modalSequence}`
   let busy = false
@@ -33,17 +51,21 @@ export function openModal({ title, body, confirmText='确认', cancelText='取�
       <div class="modal-head"><div class="modal-title-line"><span class="modal-title-icon">${contextIcon(title,22)}</span><h3 id="${titleId}">${escapeHtml(title)}</h3></div><button class="btn btn-icon btn-sm" data-modal-close aria-label="关闭对话框">${icon('close',16)}</button></div>
       <div class="modal-body">${body}</div>
       <div class="modal-actions">
-        <button class="btn" data-modal-close>${cancelText}</button>
+        <button class="btn" data-modal-close data-modal-cancel>${cancelText}</button>
         <button class="btn btn-primary" data-modal-confirm>${confirmText}</button>
       </div>
     </div>`
   document.body.appendChild(wrap)
-  const close = () => {
-    if (busy) return
+  const close = (reason='close',force=false) => {
+    if (busy) return false
+    if (!force && beforeClose && beforeClose(wrap) === false) return false
     wrap.remove()
+    wrap.dispatchEvent(new CustomEvent('modal:closed',{detail:{reason}}))
     if (opener?.isConnected) opener.focus({ preventScroll: true })
     else document.querySelector('[data-add-plan], [data-pc-data-tools], #main-content')?.focus({ preventScroll: true })
+    return true
   }
+  wrap.closeModal=close
   const focusable = () => [...wrap.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex="0"]')].filter(el => el.getClientRects().length)
   wrap.addEventListener('keydown', e => {
     if (e.key === 'Escape') { e.preventDefault(); close() }
@@ -56,7 +78,9 @@ export function openModal({ title, body, confirmText='确认', cancelText='取�
   })
   if (wrap.isConnected) (wrap.querySelector('input:not(:disabled):not([type="hidden"])') || focusable()[0])?.focus()
   wrap.addEventListener('click', (e) => {
-    if (e.target === wrap || e.target.closest('[data-modal-close]')) close()
+    if (e.target === wrap) close()
+    else if (e.target.closest('[data-modal-cancel]')) close('cancel',true)
+    else if (e.target.closest('[data-modal-close]')) close()
   })
   wrap.querySelector('[data-modal-confirm]')?.addEventListener('click', async e => {
     if (busy) return
@@ -70,7 +94,7 @@ export function openModal({ title, body, confirmText='确认', cancelText='取�
       wrap.querySelector('[data-modal-confirm]').disabled = false
       wrap.querySelector('[role="dialog"]').removeAttribute('aria-busy')
     }
-    if (result !== false) close()
+    if (result !== false) close('confirmed')
   })
   return wrap
 }

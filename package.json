@@ -9,6 +9,7 @@
   "scripts": {
     "db:init": "node scripts/database.mjs init",
     "db:init-monthly-plan": "node scripts/init-monthly-plan.mjs",
+    "db:tools-setup": "node scripts/setup-tool-warehouses.mjs",
     "db:check": "node scripts/database.mjs check",
     "db:schema": "node scripts/generate-schema.mjs",
     "test:db-init": "node tests/database_init.mjs",
@@ -33,8 +34,10 @@
     "test:logic": "node tests/schedule_logic.mjs",
     "test:roles": "node tests/phase_one_roles.mjs",
     "test:navigation": "node tests/function_navigation.mjs",
-    "test:tools": "node tests/tool_management.mjs && node tests/tool_management_database.mjs && node tests/tool_workspace_ui.mjs && node tests/tool_management_stress_1000.mjs",
-    "test": "node tests/phase_one_roles.mjs && node tests/schedule_logic.mjs && node tests/v01_acceptance.mjs && node tests/planning_calendar.mjs && node tests/demo_persistence.mjs && node tests/database_persistence.mjs && node tests/function_navigation.mjs && node tests/tool_management.mjs && node tests/tool_management_database.mjs && node tests/tool_workspace_ui.mjs && node tests/tool_management_stress_1000.mjs && node tests/ui_smoke.mjs"
+    "test:tools": "node tests/tool_management.mjs && node tests/tool_management_database.mjs && node tests/tool_ledger_workflow.mjs && node tests/tool_table_commands.mjs && node tests/tool_workspace_ui.mjs && node tests/tool_management_stress_1000.mjs && node tests/tool_ux_regressions.mjs && node tests/tool_additional_regressions.mjs && node tests/tool_additional_regressions_ui.mjs",
+    "test": "node tests/phase_one_roles.mjs && node tests/schedule_logic.mjs && node tests/v01_acceptance.mjs && node tests/planning_calendar.mjs && node tests/demo_persistence.mjs && node tests/database_persistence.mjs && node tests/function_navigation.mjs && node tests/tool_management.mjs && node tests/tool_management_database.mjs && node tests/tool_ledger_workflow.mjs && node tests/tool_table_commands.mjs && node tests/tool_workspace_ui.mjs && node tests/tool_management_stress_1000.mjs && node tests/ui_smoke.mjs && node tests/tool_ux_regressions.mjs && node tests/tool_additional_regressions.mjs && node tests/tool_additional_regressions_ui.mjs",
+    "test:tools:additional": "node tests/tool_additional_regressions.mjs && node tests/tool_additional_regressions_ui.mjs",
+    "test:tools:ux": "node tests/tool_ux_regressions.mjs"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",

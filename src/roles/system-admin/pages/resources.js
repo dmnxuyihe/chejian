@@ -3,7 +3,7 @@ import { badge, openModal, toast } from '../../../core/ui.js'
 import { statusBadge } from '../../../core/derived.js'
 import { addEmployee } from '../../../core/actions.js'
 
-const tabNames = { employees:'人员', teams:'班组', workstations:'工位', equipment:'设备', materials:'物料', tools:'工具', spares:'备件' }
+const tabNames = { employees:'人员', teams:'班组', workstations:'工位', equipment:'设备', materials:'物料', spares:'备件' }
 let activeTab = 'employees'
 
 function employeeTable(state) {
@@ -21,13 +21,12 @@ export const resourcesPage = {
     if (activeTab==='workstations') content = workstationTable(state)
     if (activeTab==='equipment') content = equipmentTable(state)
     if (activeTab==='materials') content = simpleTable(state.materials,'物料')
-    if (activeTab==='tools') content = simpleTable(state.tools,'工具')
     if (activeTab==='spares') content = simpleTable(state.spareParts,'备件')
     const addBtn = activeTab==='employees' ? '<button class="btn btn-primary" data-add-employee>新增人员</button>' : ''
     return `${pageHeader('基础资源管理','其他模块第一版只保留简单查询 / 维护能力，不展开复杂审批与库存流程。',addBtn)}
       <section class="card">
         <div class="filter-row" style="margin-bottom:18px">
-          <div class="tabs">${Object.entries(tabNames).map(([id,name])=>`<button class="tab ${activeTab===id?'active':''}" data-resource-tab="${id}">${name}</button>`).join('')}</div>
+          <div class="tabs">${Object.entries(tabNames).map(([id,name])=>`<button class="tab ${activeTab===id?'active':''}" data-resource-tab="${id}">${name}</button>`).join('')}<a class="tab" href="#/functions/assets/tool-register" data-resource-tools>工具管理 ↗</a></div>
         </div>
         ${content}
       </section>`

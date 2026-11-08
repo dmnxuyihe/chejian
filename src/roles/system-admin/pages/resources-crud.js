@@ -3,13 +3,13 @@ import { icon } from '../../../shared/icons.js'
 import { badge, openModal, toast, escapeHtml } from '../../../core/ui.js'
 import { statusBadge } from '../../../core/derived.js'
 import { createResource, updateResource, deleteResource } from '../../../core/actions.js'
+import { toolsPage } from './tools.js'
 
 const tabs = {
   employees: { label: '人员', fields: [['no','工号','text'],['name','姓名','text'],['teamId','班组','team'],['status','状态','status']] },
   teams: { label: '班组', fields: [['name','班组名称','text'],['status','状态','status']] },
   workstations: { label: '工位', fields: [['code','编码','text'],['name','名称','text'],['line','产线','text'],['capacity','容量','number'],['status','状态','status']] },
   equipment: { label: '设备', fields: [['code','编码','text'],['name','设备名称','text'],['type','设备类型','text'],['workstationId','所属工位','workstation'],['status','状态','status'],['location','位置','text']] },
-  tools: { label: '工具', fields: [['code','工具编码','text'],['name','工具名称','text'],['quantity','可用数量','number'],['manufacturer','厂家','text'],['inspection_cycle_months','检修周期（月）','number'],['last_inspection_at','上次检修时间','text'],['location','位置','text'],['status','状态','status']] },
   materials: { label: '物料', fields: [['code','物料编码','text'],['name','物料名称','text'],['specification','规格型号','text'],['unit','计量单位','text'],['quantity','可用数量','number'],['manufacturer','厂家','text'],['location','位置','text'],['status','状态','status']] },
   spareParts: { label: '备件', fields: [['code','备件编号','text'],['name','备件名称','text'],['specification','规格型号','text'],['quantity','可用数量','number'],['unit','计量单位','text'],['manufacturer','厂家','text'],['manufacture_date','出厂日期','text'],['location','位置','text'],['status','状态','status']] },
 }
@@ -21,7 +21,6 @@ let statusFilter = ''
 const statusLabel = value => ({ACTIVE:'在岗',INACTIVE:'停用',ENABLED:'启用',DISABLED:'停用',AVAILABLE:'可用',MAINTENANCE:'检修中',FAULT:'故障'})[value] || value || '未登记'
 const roleResourceView = {
   'material-warehouse': {tab:'materials',title:'物料与仓储台账'},
-  'tool-management': {tab:'tools',title:'工具台账'},
   'equipment-management': {tab:'equipment',title:'设备台账'},
 }
 const val = (row, key) => row?.[key] ?? ''
@@ -84,16 +83,19 @@ function visibleRows(state) {
 }
 
 export const resourcesCrudPage = {
-  render({ state, role }) {
+  render(ctx) {
+    const {state,role}=ctx
+    if(role?.id==='tool-management')return toolsPage.render(ctx)
     const roleId = role?.id || 'system-admin'
     const roleView = roleResourceView[roleId]
     if (activeRole !== roleId) { activeRole = roleId; activeTab = roleView?.tab || 'employees';query='';statusFilter='' }
     const config = tabs[activeTab]
     const allRows=rowsFor(state,activeTab),rows=visibleRows(state)
     return `<div class="resource-workspace">${pageHeader(roleView?.title || '基础资源管理', '', `<button class="btn btn-primary" data-add-resource>${icon('package',16)}新增${config.label}</button>`)}
-      <section class="card resource-ledger"><nav class="tabs" aria-label="资源类型">${Object.entries(tabs).map(([key,item]) => `<button class="tab ${key===activeTab?'active':''}" aria-pressed="${key===activeTab}" data-resource-tab="${key}">${item.label}</button>`).join('')}</nav><div class="resource-table-toolbar"><form class="resource-search" data-resource-search-form role="search"><label for="resource-query">搜索${config.label}</label><div>${icon('search',16)}<input class="input" id="resource-query" data-resource-query type="search" value="${esc(query)}" placeholder="名称、编码或班组"><button class="btn btn-sm" type="submit">查询</button></div></form><label class="resource-status-filter">状态<select class="select" data-resource-status><option value="">全部状态</option>${[...new Set(allRows.map(row=>row.status).filter(Boolean))].map(status=>`<option value="${esc(status)}" ${statusFilter===status?'selected':''}>${esc(statusLabel(status))}</option>`).join('')}</select></label><p class="resource-result-count" role="status" data-resource-count>${rows.length} / ${allRows.length} 条记录</p></div><div data-resource-table>${table({state},activeTab,rows)}</div></section></div>`
+      <section class="card resource-ledger"><nav class="tabs" aria-label="资源类型">${Object.entries(tabs).map(([key,item]) => `<button class="tab ${key===activeTab?'active':''}" aria-pressed="${key===activeTab}" data-resource-tab="${key}">${item.label}</button>`).join('')}<a class="tab" href="#/functions/assets/tool-register" data-resource-tools>工具管理 ↗</a></nav><div class="resource-table-toolbar"><form class="resource-search" data-resource-search-form role="search"><label for="resource-query">搜索${config.label}</label><div>${icon('search',16)}<input class="input" id="resource-query" data-resource-query type="search" value="${esc(query)}" placeholder="名称、编码或班组"><button class="btn btn-sm" type="submit">查询</button></div></form><label class="resource-status-filter">状态<select class="select" data-resource-status><option value="">全部状态</option>${[...new Set(allRows.map(row=>row.status).filter(Boolean))].map(status=>`<option value="${esc(status)}" ${statusFilter===status?'selected':''}>${esc(statusLabel(status))}</option>`).join('')}</select></label><p class="resource-result-count" role="status" data-resource-count>${rows.length} / ${allRows.length} 条记录</p></div><div data-resource-table>${table({state},activeTab,rows)}</div></section></div>`
   },
   mount(ctx) {
+    if(ctx.role?.id==='tool-management')return toolsPage.mount(ctx)
     document.querySelectorAll('[data-resource-tab]').forEach(button => button.addEventListener('click', () => { activeTab = button.dataset.resourceTab;query='';statusFilter=''; ctx.rerender(false);document.querySelector(`[data-resource-tab="${activeTab}"]`)?.focus({preventScroll:true}) }))
     const applyFilter=()=>{
       query=document.querySelector('[data-resource-query]').value;statusFilter=document.querySelector('[data-resource-status]').value

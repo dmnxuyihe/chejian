@@ -73,8 +73,16 @@ const lines=s.toolManagement.counts.find(c=>c.id===check).lines.map(l=>({assetId
 rejected(()=>cmd('COUNT_FINISH',{id:check,reason:'无差异',lines}),/库存已变化/)
 cmd('COUNT_CANCEL',{id:check})
 const count=cmd('COUNT_CREATE',{warehouseId:warehouse1}).id
+const countRow=s.toolManagement.counts.find(c=>c.id===count)
+const firstLine=countRow.lines[0]
+cmd('COUNT_PROGRESS',{id:count,lines:[{assetId:firstLine.assetId,counted:firstLine.expected}]})
+assert.equal(s.toolManagement.counts.find(c=>c.id===count).lines.find(l=>l.assetId===firstLine.assetId).counted,firstLine.expected)
 const actual=s.toolManagement.counts.find(c=>c.id===count).lines.map(l=>({assetId:l.assetId,counted:l.expected-(l.assetId===bulk?1:0)}))
 cmd('COUNT_FINISH',{id:count,reason:'实物少1件，确认盘亏',lines:actual})
+assert.equal(asset(bulk).quantity,10)
+const countLoss=cmd('DISPOSAL_REQUEST',{assetId:bulk,quantity:1,kind:'LOST',reason:'盘亏经核实',countId:count}).id
+assert.equal(asset(bulk).quantity,10)
+cmd('DISPOSAL_REVIEW',{id:countLoss,decision:'APPROVED',opinion:'独立复核盘点差异'},'盘点审核员')
 assert.equal(asset(bulk).quantity,9)
 const partialService=cmd('SERVICE_SEND',{assetId:bulk,quantity:2,kind:'INSPECTION',provider:'检定中心',reason:'部分送检'}).id
 cmd('SERVICE_FINISH',{id:partialService,result:'PASS',certificate:'B-CERT'})

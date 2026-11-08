@@ -33,4 +33,4 @@ export const navigationId = entry => entry?.role==='tool-management'?'tool-regis
 export const navigationLabel = entry => labels[navigationId(entry)] || entry?.label || ''
 export const navigationGroup = entry => navigationGroups.find(group=>group.entries.includes(navigationId(entry)))
 export const navigationEntries = group => group.entries.map(id=>functionEntries.find(entry=>entry.id===id&&entry.status==='implemented')).filter(Boolean)
-export const navigationSearchText = entry => [entry.label,navigationLabel(entry),...functionEntries.filter(alias=>navigationId(alias)===entry.id).map(alias=>alias.label),entry.id==='resources'?'人员 班组 工位 设备 物料 备件':'',entry.id==='tool-register'?'借还 调拨 送检 送修 遗失 报废 盘点 RFID 工具柜 无人工具室':''].join(' ')
+export const navigationSearchText = entry => [entry.label,navigationLabel(entry),...functionEntries.filter(alias=>navigationId(alias)===entry.id).map(alias=>alias.label),entry.id==='resources'?'人员 班组 工位 设备 物料 备件':'',entry.id==='tool-register'?'借还 调拨 送检 送修 遗失 报废 盘点 RFID 工具柜 无人工具室 字典 分类 套装 审核 检定 预警':''].join(' ')
