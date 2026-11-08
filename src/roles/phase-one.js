@@ -35,7 +35,7 @@ const specs = [
     ['临修及产线计划',['整车临修计划','产线检修计划编制']],
   ]],
   ['approval','审核 / 审批人员','审',[
-    ['审批中心',['月度检修计划审核审批','整车临修审核审批','配件临修审核审批','物料需求计划审核']],
+    ['审批中心',['整车临修审核审批','配件临修审核审批','物料需求计划审核']],
   ]],
   ['scheduling','生产调度人员','调',[
     ['整车智能排程',['整车日计划编排与调整','日计划发布与任务下发','整车日计划/修程查询','车间每日任务日历']],
@@ -129,7 +129,7 @@ const specs = [
 const legacy = { 'system-admin':systemAdminRole, planning:planningRole, approval:approvalRole, scheduling:schedulingRole, foreman:foremanRole, worker:workerRole, quality:qualityRole, technical:technicalRole }
 const implementations = {
   planning:{'年度计划同步与汇总':'annual-plan','年度计划查询与交验统计':'annual-stats','月度计划同步与编制':'plans','月度计划日历查询':'g2-p2','月度计划交验统计':'monthly-stats','配件下车检修计划':'component-down-plan','配件上车计划':'component-up-plan','整车临修计划':'temporary-repair'},
-  approval:{'月度检修计划审核审批':'monthly-plan-approval','整车临修审核审批':'vehicle-temp-approval','配件临修审核审批':'component-temp-approval'},
+  approval:{'整车临修审核审批':'vehicle-temp-approval','配件临修审核审批':'component-temp-approval'},
   scheduling:{'整车日计划编排与调整':'dashboard','日计划发布与任务下发':'gantt','整车日计划/修程查询':'workforce','车间每日任务日历':'workshop-calendar','计划下发与执行跟踪':'exceptions'},
   'workshop-management':{'机车检修进度监控':'control'},
   foreman:{'整车派工与人员调整':'team-tasks'},

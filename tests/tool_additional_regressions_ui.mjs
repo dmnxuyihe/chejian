@@ -81,6 +81,9 @@ try{
  await targetRow.locator('[data-tool-detail]').click();await finalPage.locator('[data-tool-detail-tab="service"]').click();assert.match(await finalPage.locator('[data-tool-detail-content]').innerText(),/PG-SOURCE-CERT/)
  await finalPage.screenshot({path:fileURLToPath(new URL('04-来源证书与新台账.png',out))});await finalPage.locator('.modal [data-modal-cancel]').click()
  await finalPage.locator(`[data-tool-check="asset:${c}"]`).check();assert.equal(await finalPage.locator('[data-tool-table-action="transfer"]').isDisabled(),true);assert.match(await finalPage.locator('[data-tool-operation-reason]').allTextContents().then(r=>r.join(' ')),/套装组成/)
+ assert.ok(await finalPage.locator('.tool-table-state .tool-state').count()>0)
+ await finalPage.locator('[name="query"]').fill('AUDIT-REPAIR');await finalPage.locator('[data-tool-query] [type="submit"]').click();assert.match(await finalPage.locator('[data-tool-hidden-selection]').innerText(),/1 项不在当前筛选结果内/)
+ await finalPage.locator('[data-tool-reset-query]').click()
  await finalPage.locator('[data-tool-clear-selection]').click()
  await post('BATCH',{commands:['REPAIR','INSPECTION'].map(kind=>({type:'SERVICE_SEND',payload:{assetId:a,quantity:1,kind,provider:'混批复核方',reason:'混合回执验收'}}))})
  await finalPage.reload();await finalPage.locator(`[data-tool-check="asset:${a}"]`).check();await finalPage.locator('[data-tool-table-action="service-finish"]').click()
@@ -89,6 +92,24 @@ try{
  for(const kind of ['repair','inspection']){await finalPage.locator('[data-tool-receipt-group]').filter({hasText:kind==='repair'?'送修记录':'送检记录'}).click();assert.equal(await finalPage.locator('[data-record-kind]').inputValue(),kind);assert.equal(await finalPage.locator('[data-record-id]').count(),1);await finalPage.locator('.modal [data-modal-cancel]').click()}
  await finalPage.screenshot({path:fileURLToPath(new URL('07-混批回执分别定位.png',out))})
  databaseEvidence.N04={receivedAssetId:received,certificate:'PG-SOURCE-CERT',transferId:move.id,reopened:true};databaseEvidence.N05={explicitZeroStatus:zero.eventStatus,loanMutations:0};databaseEvidence.N06={kitMemberTransferDisabled:true};databaseEvidence.N07={mixedReceiptGroups:2,eachGroupRows:1}
+ const approvalOne=await post('DISPOSAL_REQUEST',{assetId:a,quantity:1,kind:'LOST',reason:'合版审批范围甲'}),approvalTwo=await post('DISPOSAL_REQUEST',{assetId:a,quantity:1,kind:'SCRAPPED',reason:'合版审批范围乙'})
+ const accountBefore=(await db.read()).snapshot.data.toolManagement.assets.find(r=>r.id===a).quantity
+ await finalPage.reload();await finalPage.locator(`[data-tool-check="asset:${a}"]`).check()
+ assert.equal(await finalPage.locator('[data-tool-next-action]').getAttribute('data-tool-table-action'),'disposal-review')
+ await finalPage.locator('[data-tool-table-action="disposal-review"]').click()
+ assert.match(await finalPage.locator('.modal').innerText(),/合版审批范围甲/);assert.match(await finalPage.locator('.modal').innerText(),/申请人 \/ 时间/)
+ assert.match(await finalPage.locator('[data-tool-batch-scope]').innerText(),/2 张单 · 2 件/)
+ assert.ok((await finalPage.locator('[data-tool-batch-scope]').innerText()).includes(`${accountBefore} → ${accountBefore-2}`))
+ await finalPage.locator(`[data-finish-id="${approvalTwo.id}"]`).uncheck();assert.match(await finalPage.locator('[data-tool-batch-scope]').innerText(),/1 张单 · 1 件/)
+ assert.ok((await finalPage.locator('[data-tool-batch-scope]').innerText()).includes(`${accountBefore} → ${accountBefore-1}`))
+ await finalPage.locator(`[data-finish-id="${approvalOne.id}"]`).uncheck();assert.equal(await finalPage.locator('.modal [data-modal-confirm]').isDisabled(),true)
+ await finalPage.locator(`[data-finish-id="${approvalOne.id}"]`).check();await finalPage.locator('.modal [data-f="decision"]').selectOption('REJECTED');assert.match(await finalPage.locator('[data-tool-batch-scope]').innerText(),/驳回不扣减/)
+ await finalPage.locator('.modal [data-f="opinion"]').fill('补充依据后再申请');await finalPage.locator('.modal [data-f="actor"]').fill('合版UI独立审核员')
+ await finalPage.screenshot({path:fileURLToPath(new URL('合版-审核依据与本次范围.png',out))})
+ await finalPage.locator('.modal [data-modal-confirm]').click();await finalPage.locator('.modal').waitFor({state:'detached'})
+ const afterReview=(await db.read()).snapshot.data.toolManagement
+ assert.equal(afterReview.disposals.find(r=>r.id===approvalOne.id).status,'REJECTED');assert.equal(afterReview.disposals.find(r=>r.id===approvalTwo.id).status,'PENDING');assert.equal(afterReview.assets.find(r=>r.id===a).quantity,accountBefore)
+ databaseEvidence.inheritedInteractions={statusColors:true,hiddenSelectionExplicit:true,nextAction:'disposal-review',reviewScope:'only checked applications',unselectedUnchanged:true,emptySelectionDisabled:true}
  assert.equal(errors.length,0)
  const liveAfter=await(await fetch('http://127.0.0.1:5193/api/state')).json();assert.equal(liveAfter.revision,liveBefore.revision)
  const result={date:'2026-11-09',passed:true,purpose:'Acceptance of original browser and PostgreSQL reproductions',productionWrites:false,productionRevisionBefore:liveBefore.revision,productionRevisionAfter:liveAfter.revision,findings,databaseEvidence,browserErrors:errors}

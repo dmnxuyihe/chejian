@@ -201,11 +201,17 @@ function finishBatch(ctx,v,action,selected,d){
  const {form,input,choice,table}=d,m=ctx.state.toolManagement,ids=new Set(selected.flatMap(e=>e.asset?[e.id]:e.kit.lines.map(l=>l.assetId)))
  const rows=(action==='service-finish'?m.services:action==='transfer-finish'?m.transfers:m.disposals).filter(r=>ids.has(r.assetId)&&r.status===(action==='service-finish'?'OPEN':'PENDING'))
  if(!rows.length)throw Error('所选工具没有对应的待办理记录')
- let body=`<div class="tool-wide">${table(['选择办理','单号','工具编号','数量','业务信息'],rows.map(r=>[ `<input type="checkbox" data-finish-id="${r.id}" checked aria-label="办理单据${r.id}">`,r.id,esc(m.assets.find(a=>a.id===r.assetId)?.code),r.quantity,esc(r.provider||r.reason||name(m.warehouses,r.toWarehouseId))]))}</div>`
+ const review=action==='disposal-review'
+ const source=r=>[r.countId&&`盘点 #${r.countId}`,r.loanId&&`借用单 #${r.loanId}`,r.serviceId&&`检修单 #${r.serviceId}`].filter(Boolean).join(' · ')||'在库工具申请'
+ let body=`<p class="tool-wide tool-batch-scope" data-tool-batch-scope role="status"></p><div class="tool-wide">${table(review?['选择办理','申请单 / 工具编号','申请人 / 时间','类型 / 数量','原因 / 来源','账面 → 仅本单批准后']:['选择办理','单号','工具编号','数量','业务信息'],rows.map(r=>{const a=m.assets.find(a=>a.id===r.assetId);return review?[`<input type="checkbox" data-finish-id="${r.id}" checked aria-label="办理单据${r.id}">`,`#${r.id} · ${esc(a.code)}`,`${esc(r.actor)}<br>${esc(r.at.replace('T',' ').slice(0,16))}`,`${r.kind==='LOST'?'遗失':'报废'} · ${r.quantity} 件`,`${esc(r.reason)}<br><small>${esc(source(r))}</small>`,`${a.quantity} → ${a.quantity-r.quantity} 件`]:[`<input type="checkbox" data-finish-id="${r.id}" checked aria-label="办理单据${r.id}">`,r.id,esc(a.code),r.quantity,esc(r.provider||r.reason||name(m.warehouses,r.toWarehouseId))]}))}</div>`
+ if(review)body+='<p class="tool-wide pc-help">仅审核勾选的申请。批准后扣减对应数量；驳回不扣账，检修不合格件仍保持停用。申请人不能审核自己的申请。</p>'
  if(action==='service-finish')body+=choice('result','检定 / 维修结果',[['','请选择校验结果'],['PASS','合格回库'],['FAIL','不合格转报废审核']],'')+input('certificate','检定证书 / 维修结论')
  if(action==='transfer-finish')body+=choice('decision','处理结果',[['RECEIVED','接收入库'],['CANCELLED','取消调拨']],'RECEIVED')
  if(action==='disposal-review')body+=choice('decision','审核结果',[['APPROVED','批准'],['REJECTED','驳回']],'APPROVED')+input('opinion','审核意见')
- return form(ctx,action==='service-finish'?'登记检修结果':action==='transfer-finish'?'接收调拨':'审核申请','BATCH',body,(p,modal)=>({commands:[...modal.querySelectorAll('[data-finish-id]:checked')].map(el=>({type:action==='service-finish'?'SERVICE_FINISH':action==='transfer-finish'?'TRANSFER_FINISH':'DISPOSAL_REVIEW',payload:{...p,id:Number(el.dataset.finishId)}}))}))
+ const modal=form(ctx,action==='service-finish'?'登记检修结果':action==='transfer-finish'?'接收调拨':'审核申请','BATCH',body,(p,modal)=>({commands:[...modal.querySelectorAll('[data-finish-id]:checked')].map(el=>({type:action==='service-finish'?'SERVICE_FINISH':action==='transfer-finish'?'TRANSFER_FINISH':'DISPOSAL_REVIEW',payload:{...p,id:Number(el.dataset.finishId)}}))}))
+ const confirm=modal.querySelector('[data-modal-confirm]'),label=confirm.textContent
+ const sync=()=>{const ids=new Set([...modal.querySelectorAll('[data-finish-id]:checked')].map(el=>Number(el.dataset.finishId))),chosen=rows.filter(r=>ids.has(r.id)),total=chosen.reduce((n,r)=>n+r.quantity,0),account=[...new Set(chosen.map(r=>r.assetId))].reduce((n,id)=>n+m.assets.find(a=>a.id===id).quantity,0),impact=review&&ids.size?(modal.querySelector('[data-f="decision"]').value==='APPROVED'?` 批准所选申请后，所涉工具账面合计 ${account} → ${account-total} 件。`:' 驳回不扣减账面数量。'):'';modal.querySelector('[data-tool-batch-scope]').textContent=`本次办理 ${ids.size} 张单 · ${total} 件；未勾选单据保持原状态。${impact}`;confirm.disabled=!ids.size;confirm.textContent=`${label}（${ids.size}单）`}
+ modal.querySelectorAll('[data-finish-id],[data-f="decision"]').forEach(el=>el.addEventListener('change',sync));sync();return modal
 }
 function openCountHistory(ctx,v,d){
  const m=ctx.state.toolManagement

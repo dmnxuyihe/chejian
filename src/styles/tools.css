@@ -96,6 +96,9 @@
 .tool-master-table th{position:sticky;top:0;z-index:2;background:var(--surface-2);font-weight:500;color:var(--muted);padding-top:10px;padding-bottom:10px;white-space:nowrap}
 .tool-master-table th:nth-child(2),.tool-master-table td:nth-child(2){min-width:155px}.tool-master-table th:nth-child(7),.tool-master-table td:nth-child(7){min-width:195px}
 .tool-master-table .tool-check-column{min-width:44px;width:44px;position:sticky;left:0;z-index:1;background:var(--surface);text-align:center}.tool-master-table th.tool-check-column{z-index:3;background:var(--surface-2)}.tool-master-table .tool-table-state{font-weight:500;white-space:normal}.tool-master-table tr.is-selected td{background:var(--brand-soft)}.tool-master-table tr:hover td{background:var(--surface-2)}
+.tool-table-state .tool-state{display:flex;white-space:normal;line-height:1.7}.tool-table-state .tool-state::before{flex:0 0 6px}
+.tool-selection-hidden{display:block;max-width:250px;color:var(--muted);font-size:10px;font-weight:400;white-space:normal;margin-top:3px}
+.tool-batch-scope{margin:0;border-left:3px solid var(--brand);padding:9px 12px;background:var(--brand-soft);font-size:12px}
 .tool-master-table input[type=checkbox]{height:18px;width:18px;accent-color:var(--brand);cursor:pointer}.tool-name-select{font:inherit;font-weight:600;border:0;background:transparent;color:var(--text);text-align:left;padding:0;cursor:pointer}.tool-name-select:hover{color:var(--brand)}
 .tool-column-trigger{display:flex;gap:10px;align-items:center;justify-content:space-between;width:100%;padding:2px 0;border:0;background:none;font:inherit;color:inherit;cursor:pointer}.tool-column-trigger span{font-size:11px;opacity:.8}.tool-column-trigger.is-filtered{color:var(--brand)}
 .tool-applied-filters{font-size:11px;line-height:1.8;color:var(--brand)}.tool-applied-filters .text-action{font-size:11px;margin-left:12px}

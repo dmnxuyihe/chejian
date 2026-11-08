@@ -14,8 +14,8 @@
     "db:schema": "node scripts/generate-schema.mjs",
     "test:db-init": "node tests/database_init.mjs",
     "test:planning": "node tests/planning_calendar.mjs",
-    "test:monthly-tools": "node tests/monthly_tools_integration.mjs && node tests/monthly_tools_ui.mjs",
-    "test:monthly-schedule-approval": "node tests/monthly_schedule_approval.mjs",
+    "test:monthly-tools": "node tests/planning_import.mjs && node tests/monthly_plan_workflow.mjs && node tests/monthly_plan_selection_workflow.mjs && node tests/monthly_plan_unified_changes.mjs && node tests/monthly_plan_partial_publish_request.mjs && node tests/monthly_verification_publication.mjs && node tests/planning_page_ui.mjs && node tests/monthly_tools_latest_merge.mjs",
+    "test:monthly-schedule-approval": "node tests/monthly_plan_workflow.mjs && node tests/monthly_plan_selection_workflow.mjs && node tests/monthly_plan_partial_publish_request.mjs",
     "test:workshop-calendar": "node tests/workshop_calendar.mjs",
     "db:seed-workshop-calendar": "node scripts/seed-workshop-calendar.mjs",
     "test:planning-import": "node tests/planning_import.mjs",
@@ -37,7 +37,8 @@
     "test:tools": "node tests/tool_management.mjs && node tests/tool_management_database.mjs && node tests/tool_ledger_workflow.mjs && node tests/tool_table_commands.mjs && node tests/tool_workspace_ui.mjs && node tests/tool_management_stress_1000.mjs && node tests/tool_ux_regressions.mjs && node tests/tool_additional_regressions.mjs && node tests/tool_additional_regressions_ui.mjs",
     "test": "node tests/phase_one_roles.mjs && node tests/schedule_logic.mjs && node tests/v01_acceptance.mjs && node tests/planning_calendar.mjs && node tests/demo_persistence.mjs && node tests/database_persistence.mjs && node tests/function_navigation.mjs && node tests/tool_management.mjs && node tests/tool_management_database.mjs && node tests/tool_ledger_workflow.mjs && node tests/tool_table_commands.mjs && node tests/tool_workspace_ui.mjs && node tests/tool_management_stress_1000.mjs && node tests/ui_smoke.mjs && node tests/tool_ux_regressions.mjs && node tests/tool_additional_regressions.mjs && node tests/tool_additional_regressions_ui.mjs",
     "test:tools:additional": "node tests/tool_additional_regressions.mjs && node tests/tool_additional_regressions_ui.mjs",
-    "test:tools:ux": "node tests/tool_ux_regressions.mjs"
+    "test:tools:ux": "node tests/tool_ux_regressions.mjs",
+    "test:merge": "npm run test:monthly-tools && npm run test:tools"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",

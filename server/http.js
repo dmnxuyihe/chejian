@@ -4,6 +4,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { toolAlerts } from '../src/core/tool-management.js'
 import { projectRoot } from './config.js'
 import { createPlanningService } from './planning.js'
+import { createMonthlyPlanService } from './monthly-plans-v2.js'
 import { parseTemporaryRepairFile, temporaryRepairTemplateCsv, parseComponentTemporaryFile, componentTemporaryTemplateCsv, parseComponentMonthlyFile, componentMonthlyTemplateCsv } from './temporary-repair-import.js'
 
 function json(res, status, data) {
@@ -24,6 +25,7 @@ async function body(req) {
 
 export function createHandler(database) {
   const planning = database ? createPlanningService(database) : null
+  const monthlyPlans = database ? createMonthlyPlanService(database) : null
   return async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost')
@@ -70,6 +72,26 @@ export function createHandler(database) {
           const result = await database.read(), id = url.searchParams.get('vehicleRepairId')
           return json(res, 200, { records: result.snapshot.data.maintenanceRecords.filter(row => !id || row.vehicleRepairId === Number(id)), revision: result.revision })
         }
+        if (url.pathname.startsWith('/api/monthly-plans/')) {
+          if (['POST','PATCH','DELETE'].includes(req.method) && req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return json(res,403,{message:'拒绝跨站写入'})
+          const role = req.headers['x-pc1-simulated-role'] || 'PLANNER'
+          const year = url.searchParams.get('year'), month = url.searchParams.get('month')
+          if (url.pathname === '/api/monthly-plans/todos' && req.method === 'GET') return json(res,200,await monthlyPlans.todos({role}))
+          if (url.pathname === '/api/monthly-plans/month' && req.method === 'GET') return json(res,200,await monthlyPlans.read({year,month,role}))
+          if (url.pathname === '/api/monthly-plans/title' && req.method === 'PATCH') return json(res,200,await monthlyPlans.setTitle({...await body(req),role}))
+          if (url.pathname === '/api/monthly-plans/submit' && req.method === 'POST') return json(res,200,await monthlyPlans.submit({...await body(req),role}))
+          if (url.pathname === '/api/monthly-plans/request-publish' && req.method === 'POST') return json(res,200,await monthlyPlans.requestPublish({...await body(req),role}))
+          if (url.pathname === '/api/monthly-plans/direct-publish' && req.method === 'POST') return json(res,200,await monthlyPlans.directPublish({...await body(req),role}))
+          if (url.pathname === '/api/monthly-plans/withdraw' && req.method === 'POST') return json(res,200,await monthlyPlans.withdraw({...await body(req),role}))
+          if (url.pathname === '/api/monthly-plans/takeover' && req.method === 'POST') return json(res,200,await monthlyPlans.takeover({...await body(req),role}))
+          if (url.pathname === '/api/monthly-plans/decision' && req.method === 'POST') return json(res,200,await monthlyPlans.decide({...await body(req),role}))
+          const monthlyDeletion=url.pathname.match(/^\/api\/monthly-plans\/deletions\/(\d+)$/)
+          if(monthlyDeletion&&req.method==='PATCH')return json(res,200,await monthlyPlans.updateDeletion({...await body(req),deletionId:monthlyDeletion[1],role}))
+          const monthlyItem=url.pathname.match(/^\/api\/monthly-plans\/items\/(\d+)$/)
+          if(monthlyItem&&req.method==='PATCH')return json(res,200,await monthlyPlans.updateItem({...await body(req),vehicleRepairId:monthlyItem[1],role}))
+          if(monthlyItem&&req.method==='DELETE')return json(res,200,await monthlyPlans.deleteItem({...await body(req),vehicleRepairId:monthlyItem[1],role}))
+          return json(res,404,{message:'月度计划接口不存在'})
+        }
         const media = url.pathname.match(/^\/api\/pc1\/attachments\/([a-f0-9-]{36})$/)
         if (media && ['GET','HEAD'].includes(req.method)) {
           const file = await database.readMaintenanceMedia(media[1])
@@ -106,10 +128,13 @@ export function createHandler(database) {
           if (url.pathname === '/api/planning/plans' && req.method === 'GET') {
             const from = url.searchParams.get('from') || '', to = url.searchParams.get('to') || ''
             if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return json(res, 400, { message: '计划日期范围无效' })
-            for (const key of ['modelId', 'programId']) if (url.searchParams.get(key) && !/^\d+$/.test(url.searchParams.get(key))) return json(res, 400, { message: '筛选条件无效' })
+            for (const key of ['modelId', 'programId', 'repairSequence']) if (url.searchParams.get(key) && !/^\d+$/.test(url.searchParams.get(key))) return json(res, 400, { message: '筛选条件无效' })
             const planSource = url.searchParams.get('planSource') || ''
             if (planSource && !['ANNUAL', 'MONTHLY', 'NON_ANNUAL'].includes(planSource)) return json(res, 400, { message: '计划来源筛选无效' })
-            const result = await planning.plans({ from, to, modelId: url.searchParams.get('modelId'), programId: url.searchParams.get('programId'), locomotiveNo: (url.searchParams.get('locomotiveNo') || '').slice(0, 64), planSource })
+            const status=url.searchParams.get('status')||'',approvalStatus=url.searchParams.get('approvalStatus')||''
+            if(status&&!['UNSCHEDULED','SCHEDULED','IN_PROGRESS','COMPLETED'].includes(status))return json(res,400,{message:'排程状态筛选无效'})
+            if(approvalStatus&&!['DRAFT','SUBMITTED','REVIEWED','PENDING_PUBLISH','PUBLISHED','REJECTED','REVISING'].includes(approvalStatus))return json(res,400,{message:'审批状态筛选无效'})
+            const result = await planning.plans({ from, to, modelId: url.searchParams.get('modelId'), programId: url.searchParams.get('programId'), locomotiveNo: (url.searchParams.get('locomotiveNo') || '').slice(0, 64), ownerDepot:(url.searchParams.get('ownerDepot')||'').slice(0,64), repairSequence:url.searchParams.get('repairSequence'), status, approvalStatus, planSource })
             return json(res, 200, result)
           }
           if (url.pathname === '/api/planning/calendar' && req.method === 'GET') {
@@ -140,7 +165,7 @@ export function createHandler(database) {
           }
           if (url.pathname === '/api/planning/import/preview' && req.method === 'POST') {
             const input = await body(req)
-            return json(res, 200, await planning.preview({ ...input, sessionId }))
+            return json(res, 200, await planning.preview({ ...input, sessionId, role:req.headers['x-pc1-simulated-role'] || 'PLANNER' }))
           }
           const errors = url.pathname.match(/^\/api\/planning\/import\/([^/]+)\/errors\.csv$/)
           if (errors && req.method === 'GET') {
@@ -150,14 +175,20 @@ export function createHandler(database) {
           }
           if (url.pathname === '/api/planning/import/confirm' && req.method === 'POST') {
             const input = await body(req)
-            const result = await planning.confirm(sessionId, String(input.previewId || ''))
+            const result = await planning.confirm(sessionId, String(input.previewId || ''), input)
             return json(res, result.changed ? 409 : 200, result)
+          }
+          const previewAppend = url.pathname.match(/^\/api\/planning\/import\/preview\/([^/]+)\/rows$/)
+          if (previewAppend && req.method === 'POST') {
+            const input = await body(req)
+            return json(res, 200, await planning.appendPreviewRows(sessionId, decodeURIComponent(previewAppend[1]), input))
           }
           const previewRow = url.pathname.match(/^\/api\/planning\/import\/preview\/([^/]+)\/rows\/(\d+)$/)
           if (previewRow && req.method === 'PATCH') {
             const input=await body(req)
             return json(res,200,await planning.updatePreviewRow(sessionId,decodeURIComponent(previewRow[1]),Number(previewRow[2]),input.values))
           }
+          if (previewRow && req.method === 'DELETE') return json(res,200,await planning.deletePreviewRow(sessionId,decodeURIComponent(previewRow[1]),Number(previewRow[2])))
           const preview = url.pathname.match(/^\/api\/planning\/import\/preview\/([^/]+)$/)
           if (preview && req.method === 'DELETE') return json(res, 200, await planning.cancel(sessionId, decodeURIComponent(preview[1])))
           return json(res, 404, { message: '计划管理接口不存在' })

@@ -28,12 +28,12 @@ function addError(row, field, message) {
 }
 
 function detailedErrorsCsv(rows) {
-  const output = [['原始行号', '原始数据', '错误字段', '错误原因']]
-  for (const row of rows) output.push([
+  const output = [['原始行号', '错误字段', '错误值', '错误原因']]
+  for (const row of rows) for (const error of row.errors) output.push([
     row.line,
-    JSON.stringify(row.raw || {}),
-    row.errors.map(error => error.field).join('；'),
-    row.errors.map(error => error.message).join('；'),
+    error.field,
+    row.raw?.[error.field] ?? '',
+    error.message,
   ])
   return `\uFEFF${output.map(row => row.map(safeCsvCell).join(',')).join('\r\n')}\r\n`
 }
@@ -166,7 +166,7 @@ function counts(preview) {
 
 function publicPreview(preview) {
   const summary = counts(preview)
-  return { id: preview.id, importType: preview.importType, period: preview.period, expiresAt: preview.expiresAt, warnings: preview.warnings, ...summary,
+  return { id: preview.id, importType: preview.importType, importMode:preview.importMode, period: preview.period, suggestedTitle:preview.suggestedTitle, existingTitle:preview.existingTitle, titleConflict:preview.titleConflict, expiresAt: preview.expiresAt, warnings: preview.warnings, ...summary,
     rows: preview.rows.map(({ line, data, raw, errors, warnings, status }) => ({ line, data, raw, errors, warnings, status })) }
 }
 
@@ -233,13 +233,25 @@ export function createPlanningService(database) {
 
   function createRowKey(d) { return `${d.locomotiveNo}\0${d.repairProgramId}\0${d.plannedEntryAt}` }
 
-  async function calendarRows({ from, to, modelId, programId, locomotiveNo, vehicleId, entryOnly = false, planSource }) {
+  function applyMonthlyPeriodRule(entry,rows){
+    if(entry.importType!=='MONTHLY'||entry.importMode!=='MONTHLY_IMPORT')return
+    const target=entry.period.value
+    if(rows.some(row=>row.data.plannedEntryAt&&!row.data.plannedEntryAt.startsWith(`${target}-`)))for(const row of rows){addError(row,'计划入段日期',`指定月份导入只能包含${target}的数据；文件存在跨月记录，整批不能导入`);row.status='error'}
+  }
+
+  async function calendarRows({ from, to, modelId, programId, locomotiveNo, vehicleId, entryOnly = false, planSource, ownerDepot = '', repairSequence, status = '', approvalStatus = '' }) {
     const result = await pool.query(
       `SELECT vr.vehicle_repair_id, vr.locomotive_no, vr.repair_program_id,
               rp.repair_program_name, lm.model_id, lm.model_name,
               vr.planned_entry_at, vr.planned_exit_at, vr.owner_bureau, vr.owner_depot,
               vr.repair_sequence, vr.mileage_km, vr.plan_source, vr.remark,
-              vr.status, vr.approval_status, vr.current_version_id,
+              vr.status,
+              CASE WHEN EXISTS (
+                SELECT 1 FROM ${qualified('monthly_plan')} mp
+                JOIN ${qualified('monthly_plan_item')} mpi ON mpi.plan_version_id=mp.current_published_version_id
+                WHERE mpi.vehicle_repair_id=vr.vehicle_repair_id AND NOT mpi.is_cancelled
+              ) THEN 'PUBLISHED' ELSE 'DRAFT' END AS approval_status,
+              vr.current_version_id,
               sv.status AS version_status,
               CASE WHEN sv.status='CURRENT' THEN to_char(exit_task.planned_end_at,'YYYY-MM-DD"T"HH24:MI:SS') ELSE NULL END AS confirmed_exit_at
          FROM ${qualified('vehicle_repair')} vr
@@ -261,7 +273,11 @@ export function createPlanningService(database) {
           AND ($4::bigint IS NULL OR rp.repair_program_id=$4)
           AND ($5::text = '' OR vr.locomotive_no ILIKE '%' || $5 || '%')
           AND ($8::text IS NULL OR ($8='NON_ANNUAL' AND vr.plan_source<>'ANNUAL') OR ($8<>'NON_ANNUAL' AND vr.plan_source=$8))
-        ORDER BY vr.planned_entry_at, vr.locomotive_no, vr.vehicle_repair_id`, [from || '1900-01-01', to || '2199-12-31', modelId || null, programId || null, locomotiveNo || '', vehicleId || null, entryOnly, planSource || null])
+          AND ($9::text = '' OR COALESCE(vr.owner_depot,'') ILIKE '%' || $9 || '%')
+          AND ($10::text = '' OR vr.status=$10)
+          AND ($11::text = '' OR vr.approval_status=$11)
+          AND ($12::integer IS NULL OR vr.repair_sequence=$12)
+        ORDER BY vr.planned_entry_at, vr.locomotive_no, vr.vehicle_repair_id`, [from || '1900-01-01', to || '2199-12-31', modelId || null, programId || null, locomotiveNo || '', vehicleId || null, entryOnly, planSource || null, ownerDepot, status, approvalStatus, repairSequence || null])
     return result.rows.map(row => ({
       id: Number(row.vehicle_repair_id), locomotiveNo: row.locomotive_no,
       repairProgramId: Number(row.repair_program_id), repairProgramName: row.repair_program_name,
@@ -356,25 +372,35 @@ export function createPlanningService(database) {
     return { months, rows: [...groups.values()].sort((a, b) => a.modelName.localeCompare(b.modelName, 'zh-CN') || a.repairProgramName.localeCompare(b.repairProgramName, 'zh-CN')) }
   }
 
-  async function preview({ sessionId, importType, year, month, filename, contentBase64 }) {
+  async function preview({ sessionId, importType, year, month, filename, contentBase64, role = 'PLANNER', importMode = 'MONTHLY_IMPORT' }) {
     if (!['ANNUAL', 'MONTHLY'].includes(importType)) throw httpError(400, '请选择年度或月度导入')
     let period
     if (importType === 'ANNUAL') {
       const value = Number(year)
       if (!Number.isInteger(value) || value < 1900 || value > 2199) throw httpError(400, '请选择有效年份')
       period = { year: value }
-    } else period = {}
+    } else {
+      const value=String(month||'')
+      if(importMode==='MONTHLY_IMPORT'){
+        if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(value))throw httpError(400,'指定月份导入必须先选择有效月份')
+        period={year:Number(value.slice(0,4)),month:Number(value.slice(5,7)),value}
+      }else if(importMode==='BATCH_IMPORT')period={}
+      else throw httpError(400,'月度计划导入模式无效')
+    }
     const matrix = parsePlanUpload({ filename, contentBase64 })
     const dictionary = await dictionaries(pool, schema)
     const rows = normalizeRows(matrix, importType, period, dictionary)
+    applyMonthlyPeriodRule({importType,importMode,period},rows)
     const client = await pool.connect()
-    let newConflicts
-    try { newConflicts = await applyDatabaseConflicts(client, schema, rows) }
+    let newConflicts,existingTitle=null
+    try { newConflicts = await applyDatabaseConflicts(client, schema, rows);if(importType==='MONTHLY'&&importMode==='MONTHLY_IMPORT')existingTitle=(await client.query(`SELECT plan_title FROM ${qualified('monthly_plan')} WHERE plan_year=$1 AND plan_month=$2`,[period.year,period.month])).rows[0]?.plan_title||null }
     finally { client.release() }
     sweep()
     const id = randomUUID(), expiresAtMs = Date.now() + ttl
     const fileWarnings = rows.some(row => row.warnings.length) ? [...new Set(rows.flatMap(row => row.warnings))] : []
-    const entry = { id, sessionId, importType, period, filename, rows, warnings: fileWarnings, expiresAtMs, expiresAt: new Date(expiresAtMs).toISOString(), commitPromise: null, result: null }
+    const normalizedRole=['PLANNER','SECTION_CHIEF','DEPUTY_DIRECTOR'].includes(String(role).toUpperCase())?String(role).toUpperCase():'PLANNER'
+    const suggestedTitle=String(filename||'').replace(/\.(xlsx?|csv)$/i,'').trim().slice(0,255)||`${period.year}年${period.month}月检修计划`
+    const entry = { id, sessionId, importType, importMode, role:normalizedRole, period, filename, suggestedTitle, existingTitle, titleConflict:Boolean(existingTitle&&existingTitle!==suggestedTitle), titleOverwriteChoice:'NOT_APPLICABLE', rows, warnings: fileWarnings, expiresAtMs, expiresAt: new Date(expiresAtMs).toISOString(), commitPromise: null, result: null }
     previews.set(id, entry)
     return publicPreview(entry)
   }
@@ -388,6 +414,7 @@ export function createPlanningService(database) {
     const matrix=[planHeaders,...entry.rows.map(row=>planFields.map(field=>row.line===target.line?(values[field.key]??row.raw?.[field.label]??''):(row.raw?.[field.label]??'')))]
     const dictionary=await dictionaries(pool,schema)
     const rows=normalizeRows(matrix,entry.importType,entry.period,dictionary)
+    applyMonthlyPeriodRule(entry,rows)
     const client=await pool.connect()
     try{await applyDatabaseConflicts(client,schema,rows)}finally{client.release()}
     const updated=rows.find(row=>row.line===target.line)
@@ -400,6 +427,74 @@ export function createPlanningService(database) {
     entry.rows=rows;entry.warnings=rows.some(row=>row.warnings.length)?[...new Set(rows.flatMap(row=>row.warnings))]:[]
     entry.expiresAtMs=Date.now()+ttl;entry.expiresAt=new Date(entry.expiresAtMs).toISOString()
     return publicPreview(entry)
+  }
+
+  async function deletePreviewRow(sessionId, previewId, line) {
+    const entry=requirePreview(sessionId,previewId)
+    if(entry.result)throw httpError(409,'导入已提交，不能删除预览数据')
+    const target=entry.rows.find(row=>row.line===Number(line))
+    if(!target)throw httpError(404,'预览行不存在')
+    const remaining=entry.rows.filter(row=>row.line!==target.line)
+    const matrix=[planHeaders,...remaining.map(row=>planFields.map(field=>row.raw?.[field.label]??''))]
+    const dictionary=await dictionaries(pool,schema)
+    const rows=normalizeRows(matrix,entry.importType,entry.period,dictionary)
+    applyMonthlyPeriodRule(entry,rows)
+    const client=await pool.connect()
+    try{await applyDatabaseConflicts(client,schema,rows)}finally{client.release()}
+    entry.rows=rows;entry.warnings=rows.some(row=>row.warnings.length)?[...new Set(rows.flatMap(row=>row.warnings))]:[]
+    entry.expiresAtMs=Date.now()+ttl;entry.expiresAt=new Date(entry.expiresAtMs).toISOString()
+    return publicPreview(entry)
+  }
+
+  async function appendPreviewRows(sessionId, previewId, { filename, contentBase64 }) {
+    const entry = requirePreview(sessionId, previewId)
+    if (entry.result) throw httpError(409, '导入已提交，不能追加车辆')
+    if (entry.importType !== 'MONTHLY') throw httpError(400, '年度计划预览不支持在预览中追加车辆')
+    const matrix = parsePlanUpload({ filename, contentBase64 })
+    if (entry.rows.length + Math.max(0, matrix.length - 1) > 1000) throw httpError(400, '每次最多导入1000条非空计划')
+    const dictionary = await dictionaries(pool, schema)
+    const rows = normalizeRows(matrix, entry.importType, entry.period, dictionary)
+    applyMonthlyPeriodRule(entry, rows)
+    const maxLine = Math.max(1, ...entry.rows.map(row => Number(row.line) || 1))
+    rows.forEach((row, index) => { row.line = maxLine + index + 1 })
+    const client = await pool.connect()
+    try { await applyDatabaseConflicts(client, schema, rows) } finally { client.release() }
+    entry.rows = [...entry.rows, ...rows]
+    markFileDuplicates(entry.rows)
+    entry.warnings = entry.rows.some(row => row.warnings.length) ? [...new Set(entry.rows.flatMap(row => row.warnings))] : []
+    entry.expiresAtMs = Date.now() + ttl
+    entry.expiresAt = new Date(entry.expiresAtMs).toISOString()
+    return publicPreview(entry)
+  }
+
+  async function attachImportedMonthlyDrafts(client, entry, inserted) {
+    const groups = new Map()
+    for (const row of inserted) {
+      const key = row.plannedEntryAt.slice(0, 7)
+      groups.set(key, [...(groups.get(key) || []), row])
+    }
+    for (const [key, items] of groups) {
+      const [year, month] = key.split('-').map(Number)
+      const plan = (await client.query(`
+        INSERT INTO ${qualified('monthly_plan')}(plan_year,plan_month,plan_title,title_source,last_monthly_import_at)
+        VALUES($1,$2,$3,$4,now())
+        ON CONFLICT(plan_year,plan_month) DO UPDATE SET last_monthly_import_at=now(),updated_at=now()
+        RETURNING *`, [year, month, entry.importMode==='MONTHLY_IMPORT'?entry.suggestedTitle:`${year}年${month}月检修计划`, entry.importMode === 'MONTHLY_IMPORT' ? 'MONTHLY_IMPORT' : 'DEFAULT'])).rows[0]
+      if(entry.importMode==='MONTHLY_IMPORT'&&entry.titleOverwriteChoice==='REPLACE')await client.query(`UPDATE ${qualified('monthly_plan')} SET plan_title=$2,title_source='MONTHLY_IMPORT',last_title_updated_at=now(),updated_at=now() WHERE monthly_plan_id=$1`,[plan.monthly_plan_id,entry.suggestedTitle])
+      let draft = (await client.query(`SELECT * FROM ${qualified('monthly_plan_version')} WHERE monthly_plan_id=$1 AND owner_role=$2 AND version_status='DRAFT' ORDER BY version_no DESC LIMIT 1`, [plan.monthly_plan_id, entry.role])).rows[0]
+      if (!draft) {
+        const versionNo = Number((await client.query(`SELECT COALESCE(max(version_no),0)+1 AS value FROM ${qualified('monthly_plan_version')} WHERE monthly_plan_id=$1`, [plan.monthly_plan_id])).rows[0].value)
+        draft = (await client.query(`INSERT INTO ${qualified('monthly_plan_version')}(monthly_plan_id,version_no,base_version_id,owner_role,version_status,snapshot_title) VALUES($1,$2,$3,$4,'DRAFT',$5) RETURNING *`, [plan.monthly_plan_id, versionNo, plan.current_published_version_id, entry.role, plan.plan_title])).rows[0]
+        if (plan.current_published_version_id) await client.query(`
+          INSERT INTO ${qualified('monthly_plan_item')}(plan_version_id,stable_item_key,vehicle_repair_id,locomotive_no,repair_program_id,planned_entry_at,owner_bureau,owner_depot,repair_sequence,mileage_km,remark,change_type,is_cancelled)
+          SELECT $1,stable_item_key,vehicle_repair_id,locomotive_no,repair_program_id,planned_entry_at,owner_bureau,owner_depot,repair_sequence,mileage_km,remark,'UNCHANGED',is_cancelled
+          FROM ${qualified('monthly_plan_item')} WHERE plan_version_id=$2`, [draft.plan_version_id, plan.current_published_version_id])
+      }
+      for (const item of items) await client.query(`
+        INSERT INTO ${qualified('monthly_plan_item')}(plan_version_id,stable_item_key,vehicle_repair_id,locomotive_no,repair_program_id,planned_entry_at,owner_bureau,owner_depot,repair_sequence,mileage_km,remark,change_type)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'ADDED')`, [draft.plan_version_id, `vehicle-${item.vehicleId}`, item.vehicleId, item.locomotiveNo, item.repairProgramId, item.plannedEntryAt, item.ownerBureau || null, item.ownerDepot || null, item.repairSequence, item.mileageKm, item.remark || null])
+    }
+    await client.query(`INSERT INTO ${qualified('monthly_plan_import_batch')}(import_mode,target_year,target_month,original_filename,suggested_plan_title,title_overwrite_choice,import_status,operator_role,total_count,success_count,error_count,completed_at) VALUES($1,$2,$3,$4,$5,$6,'SUCCESS',$7,$8,$9,$10,now())`,[entry.importMode,entry.importMode==='MONTHLY_IMPORT'?entry.period.year:null,entry.importMode==='MONTHLY_IMPORT'?entry.period.month:null,entry.filename,entry.suggestedTitle,entry.titleOverwriteChoice,entry.role,entry.rows.length,inserted.length,entry.rows.length-inserted.length])
   }
 
   async function commit(entry) {
@@ -422,17 +517,21 @@ export function createPlanningService(database) {
         if (!ready.length) { await client.query('ROLLBACK'); return { imported: 0, notImported: entry.rows.length, idempotent: false } }
         const maxResult = await client.query(`SELECT COALESCE(MAX(vehicle_repair_id),0)::bigint AS max_id FROM ${qualified('vehicle_repair')}`)
         let id = Number(maxResult.rows[0].max_id)
+        const inserted = []
         for (const row of ready) {
           const d = row.data
+          const vehicleId = ++id
           await client.query(
             `INSERT INTO ${qualified('vehicle_repair')}
               (vehicle_repair_id, locomotive_no, repair_program_id, planned_entry_at, planned_exit_at,
                actual_entry_at, actual_exit_at, status, approval_status, current_version_id,
                owner_bureau, owner_depot, repair_sequence, mileage_km, plan_source, remark)
              VALUES ($1,$2,$3,$4::date,NULL,NULL,NULL,'UNSCHEDULED','DRAFT',NULL,$5,$6,$7,$8,$9,$10)`,
-            [++id, d.locomotiveNo, d.repairProgramId, d.plannedEntryAt, d.ownerBureau || null, d.ownerDepot || null,
+            [vehicleId, d.locomotiveNo, d.repairProgramId, d.plannedEntryAt, d.ownerBureau || null, d.ownerDepot || null,
               d.repairSequence, d.mileageKm, entry.importType, d.remark || null])
+          inserted.push({ ...d, vehicleId })
         }
+        if (entry.importType === 'MONTHLY') await attachImportedMonthlyDrafts(client, entry, inserted)
         const revision = await client.query(`UPDATE ${qualified('application_state')} SET revision=revision+1, updated_at=now() WHERE singleton RETURNING revision`)
         await client.query('COMMIT')
         const result = { imported: ready.length, notImported: entry.rows.length - ready.length, revision: Number(revision.rows[0].revision), idempotent: false }
@@ -473,9 +572,15 @@ export function createPlanningService(database) {
     },
     async preview(input) { return preview(input) },
     async updatePreviewRow(sessionId,id,line,values){return updatePreviewRow(sessionId,id,line,values)},
+    async deletePreviewRow(sessionId,id,line){return deletePreviewRow(sessionId,id,line)},
+    async appendPreviewRows(sessionId,id,input){return appendPreviewRows(sessionId,id,input)},
     async cancel(sessionId, id) { const entry = requirePreview(sessionId, id); if (entry.result) throw httpError(409, '导入已提交，不能取消'); previews.delete(id); return { cancelled: true } },
-    async confirm(sessionId, id) {
+    async confirm(sessionId, id, options={}) {
       const entry = requirePreview(sessionId, id)
+      const choice=String(options.titleOverwriteChoice||'NOT_APPLICABLE').toUpperCase()
+      if(entry.importType==='MONTHLY'&&entry.importMode==='MONTHLY_IMPORT'&&entry.titleConflict&&!['KEEP','REPLACE'].includes(choice))throw httpError(400,'请先选择保留原标题或使用文件名覆盖标题')
+      if(!['NOT_APPLICABLE','KEEP','REPLACE'].includes(choice))throw httpError(400,'标题处理方式无效')
+      entry.titleOverwriteChoice=choice
       const result = await commit(entry)
       return result.changed ? { changed: true, preview: result.preview } : result
     },

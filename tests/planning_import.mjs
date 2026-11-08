@@ -64,14 +64,15 @@ try {
   const missingHeader = await request('/api/planning/import/preview', 'POST', filePayload('missing-header.csv', Buffer.from('\uFEFF机车编号,修程,计划入段日期\r\n'), { importType: 'ANNUAL', year: 2027 }))
   assert.equal(missingHeader.status, 400)
 
-  const preciseDateErrors = await request('/api/planning/import/preview', 'POST', filePayload('date-errors.csv', Buffer.from(`${templateCsv}TEST-DATE-NOT-EXIST,HXD1C,HXD1C高级修,,2026-02-30,,,,\r\nTEST-DATE-FORMAT,HXD1C,HXD1C高级修,,2026.02.28,,,,\r\nTEST-DATE-EMPTY,HXD1C,HXD1C高级修,,,,,,\r\n,NOT-A-MODEL,HXD1C高级修,,2026-02-30,,,,\r\n`), { importType: 'MONTHLY' }))
+  const preciseDateErrors = await request('/api/planning/import/preview', 'POST', filePayload('date-errors.csv', Buffer.from(`${templateCsv}TEST-DATE-NOT-EXIST,HXD1C,HXD1C高级修,,2026-02-30,,,,\r\nTEST-DATE-FORMAT,HXD1C,HXD1C高级修,,2026.02.28,,,,\r\nTEST-DATE-EMPTY,HXD1C,HXD1C高级修,,,,,,\r\n,NOT-A-MODEL,HXD1C高级修,,2026-02-30,,,,\r\n`), { importType: 'MONTHLY', importMode:'BATCH_IMPORT' }))
   assert.equal(preciseDateErrors.status, 200)
   assert.equal(preciseDateErrors.body.rows[0].errors.find(error => error.field === '计划入段日期')?.message, '日期不存在')
   assert.equal(preciseDateErrors.body.rows[1].errors.find(error => error.field === '计划入段日期')?.message, '日期格式不支持；请填写 YYYY-MM-DD 或 YYYY/MM/DD')
   assert.equal(preciseDateErrors.body.rows[2].errors.find(error => error.field === '计划入段日期')?.message, '日期不能为空')
   const groupedErrorCsv = Buffer.from((await request(`/api/planning/import/${preciseDateErrors.body.id}/errors.csv`)).body).toString('utf8')
-  assert.ok(groupedErrorCsv.includes('机车编号；机型；计划入段日期'), 'multiple error fields must be joined in validation order')
-  assert.ok(groupedErrorCsv.includes('机车编号不能为空；机型不在有效字典中；日期不存在'), 'multiple reasons must align with their fields')
+  assert.ok(['原始行号','错误字段','错误值','错误原因'].every(header=>groupedErrorCsv.includes(header)), 'error CSV must only expose the erroneous field and value')
+  assert.ok(!groupedErrorCsv.includes('原始数据'), 'error CSV must not expose the complete source row')
+  assert.ok(groupedErrorCsv.includes('机车编号') && groupedErrorCsv.includes('机型') && groupedErrorCsv.includes('计划入段日期'), 'each erroneous field must be exported separately')
   await request(`/api/planning/import/preview/${preciseDateErrors.body.id}`, 'DELETE')
 
   const annualBook = buffers([
@@ -138,6 +139,17 @@ try {
   assert.equal(xlsPreview.body.importable, 1)
   await request(`/api/planning/import/preview/${xlsPreview.body.id}`, 'DELETE')
 
+  const appendPreview = await request('/api/planning/import/preview', 'POST', filePayload('append.csv', Buffer.from(`${templateCsv}TEST-APPEND-01,HXD1C,HXD1C高级修,,2028-01-13,,,,\r\n`), { importType: 'MONTHLY', month: '2028-01' }))
+  assert.equal(appendPreview.status, 200)
+  const appended = await request(`/api/planning/import/preview/${appendPreview.body.id}/rows`, 'POST', filePayload('new-vehicle.csv', Buffer.from(`${templateCsv}TEST-APPEND-02,HXD1C,HXD1C高级修,,2028-01-14,,,,\r\n`)))
+  assert.equal(appended.status, 200, JSON.stringify(appended.body))
+  assert.equal(appended.body.id, appendPreview.body.id, '新建车辆必须追加到原预览批次')
+  assert.deepEqual([appended.body.total, appended.body.importable, appended.body.rows.map(row => row.line)], [2, 2, [2, 3]])
+  const appendConfirm = await request('/api/planning/import/confirm', 'POST', { previewId: appended.body.id })
+  assert.equal(appendConfirm.status, 200, JSON.stringify(appendConfirm.body))
+  assert.equal(appendConfirm.body.imported, 2)
+  assert.equal((await db.pool.query(`SELECT count(*)::int AS n FROM "${schema}".vehicle_repair WHERE locomotive_no LIKE 'TEST-APPEND-%'`)).rows[0].n, 2, '追加预览确认时应一次性写入原有和新增车辆')
+
   const mixed = buffers([
     templateMatrix[0],
     mkRow('TEST-DUP-01', '2027-11-20'),
@@ -151,7 +163,7 @@ try {
     mkRow('TEST-BAD-MILEAGE', '2027-11-23', { mileage: '-1' }),
     mkRow('TEST-OTHER-MONTH', '2028-11-23'),
   ])
-  const mixedPreview = await request('/api/planning/import/preview', 'POST', filePayload('mixed.xlsx', mixed, { importType: 'MONTHLY', month: '2027-11' }))
+  const mixedPreview = await request('/api/planning/import/preview', 'POST', filePayload('mixed.xlsx', mixed, { importType: 'MONTHLY', importMode:'BATCH_IMPORT' }))
   assert.equal(mixedPreview.status, 200, JSON.stringify(mixedPreview.body))
   const statuses = mixedPreview.body.rows.map(row => row.status)
   assert.equal(statuses[0], 'ready')
@@ -168,9 +180,15 @@ try {
   assert.equal(errorCsv.status, 200)
   const errorText = Buffer.from(errorCsv.body).toString('utf8')
   assert.ok(errorText.startsWith('\uFEFF'))
-  assert.match(errorText, /原始行号.*原始数据.*错误字段.*错误原因/)
+  assert.match(errorText, /原始行号.*错误字段.*错误值.*错误原因/)
+  assert.ok(!errorText.includes('原始数据'), 'error CSV must not contain complete source-row JSON')
   assert.ok(errorText.includes('累计走行公里') && errorText.includes('-1'), 'error CSV must include the field and original invalid value')
   await request(`/api/planning/import/preview/${mixedPreview.body.id}`, 'DELETE')
+  const crossMonthPreview=await request('/api/planning/import/preview','POST',filePayload('cross-month.csv',Buffer.from(`${templateCsv}TEST-IN-MONTH,HXD1C,HXD1C高级修,,2027-11-20,,,,\r\nTEST-OTHER-MONTH,HXD1C,HXD1C高级修,,2027-12-01,,,,\r\n`),{importType:'MONTHLY',importMode:'MONTHLY_IMPORT',month:'2027-11'}))
+  assert.equal(crossMonthPreview.status,200)
+  assert.equal(crossMonthPreview.body.importable,0,'指定月份导入存在跨月记录时必须整批拒绝')
+  assert.ok(crossMonthPreview.body.rows.every(row=>row.errors.some(error=>error.message.includes('整批不能导入'))))
+  await request(`/api/planning/import/preview/${crossMonthPreview.body.id}`,'DELETE')
   assert.equal(safeCsvCell('=SUM(1,1)'), "\"'=SUM(1,1)\"")
 
   const formulaBook = buffers([templateMatrix[0], ['=1+1', 'HXD1C', 'HXD1C高级修', '', '2027-11-25', '', '', '', '']])
@@ -206,6 +224,7 @@ try {
   assert.equal(concurrency.filter(item => item.status === 200).length, 1)
   assert.equal(concurrency.filter(item => item.status === 409).length, 1)
   assert.equal((await db.pool.query(`SELECT count(*)::int AS n FROM "${schema}".vehicle_repair WHERE locomotive_no='TEST-CONCURRENT-01'`)).rows[0].n, 1)
+  assert.equal((await db.pool.query(`SELECT count(*)::int AS n FROM "${schema}".monthly_plan_item i JOIN "${schema}".monthly_plan_version v ON v.plan_version_id=i.plan_version_id JOIN "${schema}".vehicle_repair vr ON vr.vehicle_repair_id=i.vehicle_repair_id WHERE vr.locomotive_no='TEST-CONCURRENT-01' AND v.owner_role='PLANNER' AND v.version_status='DRAFT'`)).rows[0].n,1,'月度导入车辆必须进入当前计划员角色草稿')
 
   const victim = importedRows.rows[0]
   await db.pool.query(`INSERT INTO "${schema}".schedule_version(version_id,vehicle_repair_id,version_no,status) VALUES (90001,$1,1,'DRAFT')`, [victim.vehicle_repair_id])
