@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { chromium } from 'playwright'
 import { functionEntries, functionPath } from '../src/functions/catalog.js'
+import { navigationGroups } from '../src/functions/navigation.js'
 
 const port=Number(process.env.UI_SMOKE_PORT||5187)
 const base=`http://127.0.0.1:${port}`
@@ -21,7 +22,7 @@ try {
   await page.goto(base+'/#/functions')
   await page.locator('[data-function-entry="monthly-calendar"]').waitFor()
   assert.equal(await page.locator('[data-role-card],[data-switch-role]').count(),0)
-  assert.equal(await page.locator('[data-nav-group]').count(),5)
+  assert.equal(await page.locator('[data-nav-group]').count(),navigationGroups.length)
   assert.equal(await page.locator('.function-primary-card,.workspace-nav').count(),0)
   let pageChecks=0
   for(const entry of functionEntries) {

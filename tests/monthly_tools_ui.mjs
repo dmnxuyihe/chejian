@@ -22,7 +22,7 @@ try{
   assert.equal((await db.read()).revision,initial.revision,'打开页面不能自动写入演示数据')
   const links=await page.locator('.function-directory a').allTextContents()
   for(const label of ['年度计划','配件计划','整车临修计划','计划完善与统计'])assert.ok(!links.includes(label),label)
-  assert.ok(links.includes('月度计划'),'月度计划')
+  assert.ok(links.includes('月度检修计划管理'),'月度检修计划管理')
   assert.ok(!links.includes('月度计划交验统计'),'交验统计应并入月度计划页签，不单独占用功能导航')
   checks.push('展示入口只列月度计划主线，交验统计并入页签，打开页面不改数据库')
 

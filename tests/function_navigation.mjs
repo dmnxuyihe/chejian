@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, writeFile,readFile } from 'node:fs/promises'
+import * as XLSX from '@e965/xlsx'
+import {requirementNames,requirementEntryNames} from '../src/functions/requirement-names.js'
 import { functionEntries, functionPath } from '../src/functions/catalog.js'
-import { navigationGroups, navigationEntries, navigationGroup, navigationId, navigationSearchText, withheldPlanEntries } from '../src/functions/navigation.js'
+import { navigationGroups, navigationEntries, navigationGroup, navigationId, navigationSearchText, navigationLabel, withheldPlanEntries } from '../src/functions/navigation.js'
 import { resolveFunctionRoute, defaultFunctionEntry } from '../src/functions/routes.js'
 import { renderFunctionShell, functionHomePage, mountFunctionShell } from '../src/functions/index.js'
+
+// Verify against the original workbook, not another copy of UI labels.
+const requirementBook=XLSX.read(await readFile(new URL('../docs/高级修检修车间信息化需求.xlsx',import.meta.url)))
+const cleanRequirementName=value=>String(value||'').replace(/^\s*\d+\s*[、.．]\s*/,'').replace(/\u00a0/g,' ').trim()
+for(const item of [...Object.values(requirementNames),...Object.values(requirementEntryNames)])assert.equal(item.label,cleanRequirementName(requirementBook.Sheets.Sheet1[item.cell]?.v),item.cell)
 
 for(const hash of ['', '#/', '#/select', '#/functions', '#/functions/', '#/unknown'])assert.equal(resolveFunctionRoute(hash).entry,defaultFunctionEntry)
 assert.equal(resolveFunctionRoute('#/functions/catalog').type,'catalog')
@@ -15,8 +22,8 @@ for(const entry of functionEntries){
 assert.equal(resolveFunctionRoute('#/planning/calendar').entry,defaultFunctionEntry)
 const ready=functionEntries.filter(entry=>entry.status==='implemented')
 const canonical=navigationGroups.flatMap(navigationEntries)
-assert.equal(navigationGroups.length,5)
-assert.equal(canonical.length,18)
+assert.equal(navigationGroups.length,7)
+assert.equal(canonical.length,17)
 assert.ok(!canonical.some(entry=>entry.id==='monthly-verification'),'交验统计通过月度计划页签进入，不重复占用侧栏导航')
 assert.ok(!canonical.some(entry=>entry.id==='monthly-plan-approval'),'月度审批已并入月度计划页，不再保留独立导航')
 assert.ok(canonical.every(entry=>!withheldPlanEntries.has(entry.id)))
@@ -28,9 +35,10 @@ assert.match(navigationSearchText(canonical.find(entry=>entry.id==='tool-registe
 for(const entry of functionEntries){
   const html=renderFunctionShell({entry,pageHtml:'<h1>业务内容</h1>'})
   assert.ok(html.includes(`data-function-entry="${entry.id}"`))
-  assert.equal((html.match(/data-nav-group=/g)||[]).length,5)
+  assert.equal((html.match(/data-nav-group=/g)||[]).length,navigationGroups.length)
   assert.equal((html.match(/class="function-item /g)||[]).length,canonical.length+1)
-  assert.equal((html.match(/data-nav-group="[^"]+" open/g)||[]).length,navigationGroup(entry)?1:0)
+  const group=navigationGroup(entry),direct=group&&navigationEntries(group).length===1&&navigationLabel(navigationEntries(group)[0])===group.label
+  assert.equal((html.match(/data-nav-group="[^"]+" open/g)||[]).length,group&&!direct?1:0)
   assert.doesNotMatch(html,/workspace-nav|workspace-location|function-primary-card|data-role-card|data-switch-role/)
   if(navigationGroup(entry))assert.ok(html.includes(`href="#/${functionPath(canonical.find(item=>item.id===navigationId(entry)))}" class="function-item active"`))
   for(const planned of functionEntries.filter(item=>item.status!=='implemented'))assert.ok(!html.includes(`href="#/${functionPath(planned)}"`))

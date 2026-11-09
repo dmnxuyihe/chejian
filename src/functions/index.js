@@ -7,7 +7,13 @@ import { defaultFunctionEntry } from './routes.js'
 const shellView={collapsed:false,entry:null,expandedGroup:null,scrollTop:0}
 let releaseShell=()=>{}
 const startPath=`#/${functionPath(defaultFunctionEntry)}`
-const link=(entry,active=false)=>`<a href="#/${functionPath(entry)}" class="function-item ${active?'active':''}" ${active?'aria-current="page"':''}>${esc(navigationLabel(entry))}</a>`
+const link=(entry,active=false,prefix='')=>`<a href="#/${functionPath(entry)}" class="function-item ${active?'active':''}" ${active?'aria-current="page"':''}>${prefix}${esc(navigationLabel(entry))}</a>`
+const directGroup=group=>{const entries=navigationEntries(group);return entries.length===1&&navigationLabel(entries[0])===group.label}
+function navigationMarkup(group,entry){
+  const entries=navigationEntries(group)
+  if(directGroup(group))return `<div class="function-nav-group function-nav-direct" data-nav-group="${group.id}">${link(entries[0],navigationId(entry)===entries[0].id,icon(group.icon,17))}</div>`
+  return `<details class="function-nav-group" data-nav-group="${group.id}" ${shellView.expandedGroup===group.id?'open':''}><summary>${icon(group.icon,17)}<span>${group.label}</span>${icon('chevronRight',13)}</summary><div>${entries.map(item=>link(item,navigationId(entry)===item.id)).join('')}</div></details>`
+}
 
 export function renderFunctionShell({entry=null,pageHtml,catalog=false}){
   const activeGroup=navigationGroup(entry),key=entry?.id || 'catalog'
@@ -16,7 +22,7 @@ export function renderFunctionShell({entry=null,pageHtml,catalog=false}){
   return `<div class="app-shell workspace-shell function-shell ${collapsed?'nav-collapsed':''} ${presentationViews[entry?.id]?'demo-shell demo-page-'+presentationViews[entry.id]:''}" data-function-shell data-function-entry="${esc(key)}">
     <a class="skip-content" href="#main-content" data-skip-content>跳到功能内容</a><button class="nav-scrim" data-nav-close aria-label="收起功能导航" tabindex="-1"></button>
     <aside class="sidebar" id="app-navigation" aria-label="功能导航"><a class="function-brand" href="${startPath}">${icon('train',25)}<strong>智能检修</strong></a><button class="btn btn-sm function-mobile-close" data-function-drawer-close aria-label="收起功能导航">${icon('close',16)}关闭导航</button>
-      <nav class="nav" aria-label="业务功能">${navigationGroups.map(group=>`<details class="function-nav-group" data-nav-group="${group.id}" ${shellView.expandedGroup===group.id?'open':''}><summary>${icon(group.icon,17)}<span>${group.label}</span>${icon('chevronRight',13)}</summary><div>${navigationEntries(group).map(item=>link(item,navigationId(entry)===item.id)).join('')}</div></details>`).join('')}</nav>
+      <nav class="nav" aria-label="业务功能">${navigationGroups.map(group=>navigationMarkup(group,entry)).join('')}</nav>
       <div class="function-sidebar-footer"><a href="#/functions/catalog" class="function-item ${catalog?'active':''}" ${catalog?'aria-current="page"':''}>${icon('menu',16)}全部功能</a></div>
     </aside>
     <div class="main-column"><header class="topbar"><button class="btn btn-sm function-nav-toggle" data-function-nav-toggle aria-controls="app-navigation" aria-expanded="${!collapsed}" aria-label="${collapsed?'展开功能导航':'收起功能导航'}">${icon('menu',17)}<span>导航</span></button><a class="function-compact-brand" href="${startPath}">智能检修</a><div class="topbar-actions"><button class="btn btn-icon btn-sm" data-theme-toggle title="切换明暗主题" aria-label="切换明暗主题">${icon('theme',17)}</button></div></header><main class="content" id="main-content" tabindex="-1" data-test="page-content">${functionLinks(pageHtml)}</main></div></div>`
@@ -25,7 +31,7 @@ export function renderFunctionShell({entry=null,pageHtml,catalog=false}){
 // Explicit discovery page; the default route opens monthly planning instead.
 export const functionHomePage={
   render(){
-    const content=`<div class="function-directory" data-function-directory><header class="function-directory-head"><h1>全部功能</h1><label class="function-search">${icon('search',17)}<input type="search" class="input" placeholder="查找功能" aria-label="查找功能" data-function-search></label></header><div class="function-directory-groups">${navigationGroups.map(group=>`<section class="function-group" data-group="${group.id}"><h2>${group.label}</h2><div class="function-link-grid">${navigationEntries(group).map(entry=>`<div data-function-label="${esc(navigationSearchText(entry))}">${link(entry)}</div>`).join('')}</div></section>`).join('')}</div><p class="empty" role="status" data-function-empty hidden>没有匹配的功能</p></div>`
+    const content=`<div class="function-directory" data-function-directory><header class="function-directory-head"><h1>全部功能</h1><label class="function-search">${icon('search',17)}<input type="search" class="input" placeholder="查找功能" aria-label="查找功能" data-function-search></label></header><div class="function-directory-groups">${navigationGroups.map(group=>{const entries=navigationEntries(group);return `<section class="function-group" data-group="${group.id}">${directGroup(group)?`<div data-function-label="${esc(navigationSearchText(entries[0]))}"><h2>${link(entries[0])}</h2></div>`:`<h2>${group.label}</h2><div class="function-link-grid">${entries.map(entry=>`<div data-function-label="${esc(navigationSearchText(entry))}">${link(entry)}</div>`).join('')}</div>`}</section>`}).join('')}</div><p class="empty" role="status" data-function-empty hidden>没有匹配的功能</p></div>`
     return renderFunctionShell({pageHtml:content,catalog:true})
   },
   mount(){
@@ -81,7 +87,7 @@ export function mountFunctionShell(){
   sidebar.addEventListener('click',event=>{if(mobile.matches&&event.target.closest('a'))close()})
   nav.scrollTop=shellView.scrollTop
   nav.addEventListener('scroll',()=>{if(shell.isConnected)shellView.scrollTop=nav.scrollTop},{passive:true})
-  const groups=[...shell.querySelectorAll('[data-nav-group]')]
+  const groups=[...shell.querySelectorAll('[data-nav-group]')].filter(group=>group.tagName!=='DIV')
   groups.forEach(group=>group.addEventListener('toggle',()=>{
     if(!shell.isConnected)return
     if(group.open){shellView.expandedGroup=group.dataset.navGroup;groups.forEach(other=>{if(other!==group)other.open=false})}
