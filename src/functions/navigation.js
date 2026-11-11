@@ -20,7 +20,7 @@ export const navigationGroups = [
   {id:'production',...requirementNames.production,icon:'schedule',entries:['schedule','dispatch','workshop-calendar','vehicle','vehicle-control']},
   {id:'operations',...requirementNames.work,icon:'worker',entries:['process','assignment','execution','inspection','acceptance']},
   {id:'components',...requirementNames.components,icon:'package',entries:['component-ledger']},
-  {id:'tools',...requirementNames.tools,icon:'wrench',entries:['tool-register']},
+  {id:'tools',...requirementNames.tools,icon:'wrench',entries:['tool-register','tool-inventory','tool-records','tool-data']},
   {id:'digital',...requirementNames.digital,icon:'chart',entries:['execution-tracking']},
   // Supporting pages have no single counterpart in the requirements table.
   {id:'resources',label:'基础资源',icon:'settings',supporting:true,entries:['resources','station-resources','resource-overview']},
@@ -32,11 +32,11 @@ const labels = {
   'planning-completion':'计划完善与统计', 'monthly-plan-approval':'计划审核与审批', 'vehicle-temp-approval':'整车临修审核审批', 'component-temp-approval':'配件临修审核发布', 'component-temporary':'配件临修计划',
   assignment:'任务派工', inspection:'检修专检', acceptance:'检修验收',
   resources:'基础资源台账', 'component-ledger':'配件台账',
-  'tool-register':'工具管理',
+  'tool-register':'工具台账',
   'station-resources':'工位与资源占用', process:'修程与工序',
 }
-export const navigationId = entry => entry?.role==='tool-management'?'tool-register':navigationAliases[entry?.id] || entry?.id
-export const navigationLabel = entry => requirementEntryNames[navigationId(entry)]?.label || labels[navigationId(entry)] || entry?.label || ''
+export const navigationId = entry => entry?.toolView?entry.id:entry?.role==='tool-management'?'tool-register':navigationAliases[entry?.id] || entry?.id
+export const navigationLabel = entry => navigationId(entry)==='tool-register'?'工具台账':requirementEntryNames[navigationId(entry)]?.label || labels[navigationId(entry)] || entry?.label || ''
 export const navigationGroup = entry => navigationGroups.find(group=>group.entries.includes(navigationId(entry)))
 export const navigationEntries = group => group.entries.map(id=>functionEntries.find(entry=>entry.id===id&&entry.status==='implemented')).filter(Boolean)
-export const navigationSearchText = entry => [entry.label,navigationLabel(entry),...functionEntries.filter(alias=>navigationId(alias)===entry.id).map(alias=>alias.label),entry.id==='resources'?'人员 班组 工位 设备 物料 备件':'',entry.id==='tool-register'?'借还 调拨 送检 送修 遗失 报废 盘点 RFID 工具柜 无人工具室 字典 分类 套装 审核 检定 预警':''].join(' ')
+export const navigationSearchText = entry => [entry.label,navigationLabel(entry),navigationGroup(entry)?.label,...functionEntries.filter(alias=>navigationId(alias)===entry.id).map(alias=>alias.label),entry.id==='resources'?'人员 班组 工位 设备 物料 备件':'',entry.id==='tool-register'?'借还 调拨 送检 送修 遗失 报废 盘点 RFID 工具柜 无人工具室 字典 分类 套装 审核 检定 预警':''].join(' ')

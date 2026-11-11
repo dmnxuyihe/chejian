@@ -54,6 +54,8 @@ export const functionEntries=Object.values(roles).flatMap(role=>role.nav.map(ite
 }))
 functionEntries.push({id:'vehicle-control',group:'monitor',label:'整车管控',section:'检修进度与记录',role:'scheduling',page:'control',status:'implemented',source:'scheduling/control'})
 functionEntries.push({id:'station-resources',group:'settings',label:'工位与资源占用',section:'基础资源',role:'scheduling',page:'resources',status:'implemented',source:'scheduling/resources'})
+for(const [id,label,toolView] of [['tool-inventory','盘点','inventory'],['tool-records','业务记录与预警','records'],['tool-data','工具资料','data']])functionEntries.push({id,group:'assets',label,toolView,section:'工具管理',role:'tool-management',page:'resources',status:'implemented',source:`tool-management/${id}`})
+functionEntries.find(entry=>entry.id==='tool-register').label='工具台账'
 export const primaryFunctions=[
   ['monthly-calendar','月度计划','calendar'],['schedule','检修排程','schedule'],
   ['vehicle','单车查询','train'],['workshop-calendar','车间日历','equipment'],['vehicle-control','整车管控','inspection'],

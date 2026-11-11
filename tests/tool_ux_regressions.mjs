@@ -7,7 +7,6 @@ import {loadConfig} from '../server/config.js'
 import {createHandler} from '../server/http.js'
 import {applyToolCommand} from '../src/core/tool-management.js'
 import {exportDemoSnapshot} from '../src/core/demo-persistence.js'
-
 const out=new URL('../test-artifacts/tool-ux-fixes/',import.meta.url),schema=`ux_round2_${Date.now()}_${process.pid}`,db=createDatabase({...loadConfig(),schema}),findings=[],errors=[]
 let browser,server,seq=0
 const note=(id,title,observed,evidence)=>findings.push({id,title,observed,...(evidence?{evidence}:{})})
@@ -28,17 +27,18 @@ try{
  browser=await chromium.launch({channel:'msedge',headless:true});const page=await browser.newPage({viewport:{width:1366,height:768}})
  page.on('pageerror',e=>errors.push(e.message));await fs.mkdir(new URL('screenshots/',out),{recursive:true})
  const action=k=>page.locator(`[data-tool-table-action="${k}"]`),modal=()=>page.locator('.modal')
+ const openPage=async id=>{if(!page.url().endsWith('/'+id))await page.goto(base+'/#/functions/assets/'+id);await page.locator(id==='tool-data'?'[data-base-tab]':id==='tool-records'?'[data-record-kind]':'[data-tool-workspace]').first().waitFor()}
  const close=async()=>{if(await modal().count())await modal().locator('[data-modal-cancel]').click()}
  const check=id=>page.locator(`[data-tool-check="asset:${id}"]`).check()
- const clear=async()=>{if(await page.locator('[data-tool-clear-selection]').count())await page.locator('[data-tool-clear-selection]').click()}
+ const clear=async()=>{await openPage('tool-register');if(await page.locator('[data-tool-clear-selection]').count())await page.locator('[data-tool-clear-selection]').click()}
  const reset=async()=>{await page.locator('[data-tool-reset-query]').click();await clear()}
  const savedCount=async id=>(await db.read()).snapshot.data.toolManagement.counts.find(c=>c.id===id)
  const waitProgress=async(id,assetId,n)=>{for(let i=0;i<40;i++){if((await savedCount(id)).lines.find(l=>l.assetId===assetId).counted===n)return;await new Promise(r=>setTimeout(r,100))}throw Error('Count progress not saved')}
- const openCount=async id=>{await action('count-history').click();await modal().locator(`[name="count-history"][value="${id}"]`).check();await modal().locator('[data-modal-confirm]').click();await modal().waitFor({state:'detached'})}
- const newCount=async()=>{await action('count-new').click();await modal().locator('[data-f="warehouseId"]').selectOption(String(wh.id));await modal().locator('[data-f="actor"]').fill('研究盘点人');await modal().locator('[data-modal-confirm]').click();await modal().waitFor({state:'detached'});return (await db.read()).snapshot.data.toolManagement.counts.at(-1).id}
- await page.goto(base+'/#/functions/assets/tool-register');await action('tool-data').waitFor()
+ const openCount=async id=>{await openPage('tool-inventory');await page.locator(`[data-tool-count-select][value="${id}"]`).check();await action('count-open-selected').click()}
+ const newCount=async()=>{await openPage('tool-inventory');await action('count-new').click();await modal().locator('[data-f="warehouseId"]').selectOption(String(wh.id));await modal().locator('[data-f="actor"]').fill('研究盘点人');await modal().locator('[data-modal-confirm]').click();await modal().waitFor({state:'detached'});return (await db.read()).snapshot.data.toolManagement.counts.at(-1).id}
+ await page.goto(base+'/#/functions/assets/tool-register');await action('asset-new').waitFor()
  await page.screenshot({path:file('screenshots/01-current-desktop.png')})
- note('R01','首屏数据密度及初始操作区',await page.evaluate(()=>{const t=document.querySelector('.tool-table-scroll'),p=document.querySelector('.tool-workspace-actions');return {viewport:{width:innerWidth,height:innerHeight},table:{clientWidth:t.clientWidth,scrollWidth:t.scrollWidth},columns:document.querySelectorAll('.tool-master-table th').length,bottomTop:p.getBoundingClientRect().top}}),'screenshots/01-current-desktop.png')
+ note('R01','首屏数据密度、表格身份列冻结及初始操作区',await page.evaluate(()=>{const t=document.querySelector('.tool-table-scroll'),p=document.querySelector('.tool-workspace-actions'),cells=[...document.querySelectorAll('.tool-master-table thead th')].slice(0,3);const before=cells.map(e=>Math.round(e.getBoundingClientRect().left));t.scrollLeft=Math.min(600,t.scrollWidth-t.clientWidth);const after=cells.map(e=>Math.round(e.getBoundingClientRect().left));return {viewport:{width:innerWidth,height:innerHeight},table:{clientWidth:t.clientWidth,scrollWidth:t.scrollWidth},columns:document.querySelectorAll('.tool-master-table th').length,bottomTop:p.getBoundingClientRect().top,identityColumnsFrozen:before.every((x,i)=>Math.abs(x-after[i])<=1),identityPositions:after}}),'screenshots/01-current-desktop.png')
  await page.locator(`[data-tool-detail="asset:${a}"]`).click();note('R02','名称详情与复选框选择已分离',{modalTitle:await modal().locator('h3').innerText(),selected:await page.locator('[data-tool-check]:checked').count()});await close()
  await check(a);note('R03','选中后固定底栏',{geometry:await page.locator('[data-tool-bottom]').evaluate(el=>({position:getComputedStyle(el).position,top:el.getBoundingClientRect().top,bottom:el.getBoundingClientRect().bottom,height:el.offsetHeight})),actions:await page.locator('[data-tool-operation-group="selection"] button').allTextContents()});await page.screenshot({path:file('screenshots/02-selected-bottom.png')})
  await check(b);note('R04','混选动作保留，灰显并说明原因',{actions:await page.locator('[data-tool-operation-group="selection"] button').allTextContents(),reasonControls:await page.locator('[data-tool-operation-reason]').count()});await reset()
@@ -48,19 +48,19 @@ try{
  await check(a);await action('borrow').click();await modal().locator('[data-f="borrower"]').fill('未保存草稿')
  const handleDialog=dialog=>dialog.dismiss();page.once('dialog',handleDialog);await page.locator('.modal-backdrop').click({position:{x:3,y:3}});note('R08','误点遮罩已有保护',{modalRetained:await modal().count(),value:await modal().locator('[data-f="borrower"]').inputValue()});await close()
  await action('borrow').click();note('R09','显式取消清空，确认文案明确动作',{borrower:await modal().locator('[data-f="borrower"]').inputValue(),confirmText:await modal().locator('[data-modal-confirm]').innerText()});await close();await clear()
- await action('tool-data').click();await modal().locator('[data-base-tab="categories"]').click();await modal().locator('[data-base-action="add"]').click();await close();note('R10','取消基础资料子操作的原上下文',{modals:await modal().count(),categoriesRestored:await page.locator('[data-base-tab="categories"]').count()});await close()
- await action('records').click();await modal().locator('[data-record-id]').first().check();await modal().locator('[data-record-action="return"]').click();await close();note('R11','取消归还返回原清单',{recordViews:await page.locator('[data-record-kind]').count()});await close()
- const countId=await newCount();await page.locator(`[data-count-present="${a}"]`).check();await waitProgress(countId,a,1);await page.reload();await action('count-history').waitFor();await openCount(countId)
+ await openPage('tool-data');await page.locator('[data-base-tab="categories"]').click();await page.locator('[data-base-action="add"]').click();await close();note('R10','取消基础资料子操作的原上下文',{modals:await modal().count(),categoriesRestored:await page.locator('[data-base-tab="categories"]').count()});await close()
+ await openPage('tool-records');await page.locator('[data-record-id]').first().check();await page.locator('[data-record-action="return"]').click();await close();note('R11','取消归还返回原清单',{recordViews:await page.locator('[data-record-kind]').count()});await close()
+ const countId=await newCount();await page.locator(`[data-count-present="${a}"]`).check();await waitProgress(countId,a,1);await page.reload();await action('count-open-selected').waitFor();await openCount(countId)
  note('R12','等待服务端保存后刷新恢复',{checked:await page.locator(`[data-count-present="${a}"]`).isChecked(),counted:(await savedCount(countId)).lines.find(l=>l.assetId===a).counted})
  await action('count-confirm').click();note('R13','未核对项不能直接确认',{confirmModal:await modal().count(),warning:await page.locator('.toast.warning').last().innerText()})
- await page.locator(`[data-count-verified="${a}"]`).selectOption('UNVERIFIED');await page.waitForTimeout(800);await page.reload();await action('count-history').waitFor();await openCount(countId)
+ await page.locator(`[data-count-verified="${a}"]`).selectOption('UNVERIFIED');await page.waitForTimeout(800);await page.reload();await action('count-open-selected').waitFor();await openCount(countId)
  note('R14','撤回已核对状态在刷新后是否恢复',{selectedStatus:await page.locator(`[data-count-verified="${a}"]`).inputValue(),serverCounted:(await savedCount(countId)).lines.find(l=>l.assetId===a).counted})
  await page.screenshot({path:file('screenshots/03-unverify-refresh.png')});await action('count-exit').click()
- const fastId=await newCount();await page.locator(`[data-count-present="${a}"]`).check();await page.reload();await action('count-history').waitFor();await page.waitForTimeout(650);await openCount(fastId);await waitProgress(fastId,a,1)
+ const fastId=await newCount();await page.locator(`[data-count-present="${a}"]`).check();await page.reload();await action('count-open-selected').waitFor();await page.waitForTimeout(650);await openCount(fastId);await waitProgress(fastId,a,1)
  note('R15','勾选后立即刷新',{selectedStatus:await page.locator(`[data-count-verified="${a}"]`).inputValue(),serverCounted:(await savedCount(fastId)).lines.find(l=>l.assetId===a).counted});await action('count-exit').click()
- await check(a);await page.setViewportSize({width:390,height:844});await page.screenshot({path:file('screenshots/04-selected-mobile.png')})
+ await openPage('tool-register');await check(a);await page.setViewportSize({width:390,height:844});await page.screenshot({path:file('screenshots/04-selected-mobile.png')})
  note('R16','窄屏固定底栏占用与横向溢出',await page.evaluate(()=>{const p=document.querySelector('[data-tool-bottom].has-selection'),r=p.getBoundingClientRect();return {viewport:innerHeight,bodyWidth:document.documentElement.scrollWidth,viewportWidth:innerWidth,panelHeight:r.height,panelTop:r.top,percent:Math.round(r.height/innerHeight*100)}}),'screenshots/04-selected-mobile.png')
- await page.setViewportSize({width:1366,height:768});await clear();await page.locator('[name="query"]').fill('R2-A');await page.locator('[data-tool-query] [type="submit"]').click();await page.reload();await action('tool-data').waitFor()
+ await page.setViewportSize({width:1366,height:768});await clear();await page.locator('[name="query"]').fill('R2-A');await page.locator('[data-tool-query] [type="submit"]').click();await page.reload();await action('asset-new').waitFor()
  note('R17','查询恢复及表格效率控件',{query:await page.locator('[name="query"]').inputValue(),sortOrViews:await page.locator('[aria-sort],[data-tool-sort],[data-tool-columns],[data-tool-saved-view]').count()})
  await check(a);await action('borrow').click();await page.evaluate(()=>location.hash='#/functions/catalog');await page.locator('[data-function-directory]').waitFor();note('R18','切换路由后工具弹窗是否仍悬挂',{modals:await modal().count(),hash:await page.evaluate(()=>location.hash)});await close()
  // Pure domain reproduction uses a separate in-memory state, not the DB fixture.
@@ -71,14 +71,14 @@ try{
  try{cmd('DISPOSAL_REQUEST',{assetId:a,quantity:1,kind:'LOST',countId:cid,reason:'盘点差异申请'});lossApplication='accepted'}catch(e){lossApplication=e.message}
  note('R19','盘点保留账面数量，允许关联申请',{quantity:item.quantity,status:item.status,lossApplication,approvalCount:memory.toolManagement.disposals.length,method:'pure in-memory domain command'})
   const observed=id=>findings.find(f=>f.id===id).observed
- assert.ok(observed('R01').bottomTop>0&&observed('R01').bottomTop<768)
+ assert.ok(observed('R01').bottomTop>0&&observed('R01').bottomTop<768);assert.equal(observed('R01').identityColumnsFrozen,true)
  assert.ok(observed('R03').geometry.height<180)
  assert.equal(observed('R02').selected,0)
  assert.ok(observed('R04').reasonControls>0)
  assert.equal(observed('R06').inspectionVisible,1);assert.equal(observed('R06').repairVisible,1)
  assert.equal(observed('R07').warehouse,'');assert.equal(observed('R07').borrowedVisible,1)
  assert.equal(observed('R08').modalRetained,1);assert.match(observed('R09').confirmText,/借出/)
- assert.equal(observed('R10').categoriesRestored,1);assert.equal(observed('R11').recordViews,1)
+ assert.equal(observed('R10').categoriesRestored,1);assert.equal(observed('R10').modals,0);assert.equal(observed('R11').recordViews,1)
  assert.equal(observed('R12').counted,1);assert.equal(observed('R13').confirmModal,0)
  assert.equal(observed('R14').selectedStatus,'UNVERIFIED');assert.equal(observed('R14').serverCounted,null)
  assert.equal(observed('R15').selectedStatus,'FOUND');assert.equal(observed('R15').serverCounted,1)
@@ -86,7 +86,7 @@ try{
  assert.equal(observed('R17').query,'R2-A');assert.ok(observed('R17').sortOrViews>0)
  assert.equal(observed('R18').modals,0)
  assert.equal(observed('R19').quantity,1);assert.equal(observed('R19').lossApplication,'accepted')
- await page.goto(base+'/#/functions/assets/tool-register');await action('tool-data').waitFor();await reset()
+ await page.goto(base+'/#/functions/assets/tool-register');await action('asset-new').waitFor();await reset()
  // Scan selects an identity once; it never silently increments business quantity.
  await page.locator('[data-tool-scan-mode]').check()
  const scan=async value=>{await page.locator('[name="query"]').fill(value);await page.locator('[name="query"]').press('Enter')}
@@ -128,23 +128,23 @@ try{
  const lines=closed.lines.map(l=>({assetId:l.assetId,counted:l.assetId===bulk?l.expected-1:l.expected}))
  assert.equal((await post('COUNT_FINISH',{id:closedId,lines,reason:'回归盘点差异'})).status,200)
  assert.equal((await db.read()).snapshot.data.toolManagement.assets.find(x=>x.id===bulk).quantity,6)
- await page.reload();await action('tool-data').waitFor();await openCount(closedId)
+ await page.reload();await action('count-open-selected').waitFor();await openCount(closedId)
  await action('count-loss').click();await modal().locator('[data-f="actor"]').fill('差异申请员')
  await modal().locator('[data-modal-confirm]').click();await modal().waitFor({state:'detached'})
  let management=(await db.read()).snapshot.data.toolManagement
  const disposal=management.disposals.find(x=>x.countId===closedId);assert.ok(disposal);assert.equal(disposal.status,'PENDING')
  assert.equal(management.assets.find(x=>x.id===bulk).quantity,6)
- await action('count-exit').click();await action('records').click();await modal().locator('[data-record-kind]').selectOption('disposals')
- await modal().locator(`[data-record-id="${disposal.id}"]`).check();await modal().locator('[data-record-action="disposal-review"]').click()
+ await action('count-exit').click();await openPage('tool-records');await page.locator('[data-record-kind]').selectOption('disposals')
+ await page.locator(`[data-record-id="${disposal.id}"]`).check();await page.locator('[data-record-action="disposal-review"]').click()
  await modal().locator('[data-f="actor"]').fill('独立审核员');await modal().locator('[data-f="opinion"]').fill('独立核实盘亏')
- await modal().locator('[data-modal-confirm]').click();await modal().locator('[data-record-kind]').waitFor();await close()
+ await modal().locator('[data-modal-confirm]').click();await modal().waitFor({state:'detached'});await page.locator('[data-record-kind]').waitFor();await close()
  management=(await db.read()).snapshot.data.toolManagement
  assert.equal(management.assets.find(x=>x.id===bulk).quantity,5)
  assert.equal(management.disposals.find(x=>x.id===disposal.id).status,'APPROVED')
  const duplicate=await post('DISPOSAL_REQUEST',{assetId:bulk,quantity:1,kind:'LOST',countId:closedId,reason:'不得重复申请'})
  assert.equal(duplicate.status,400);assert.match(duplicate.result.message,/盘亏数量/)
  note('R24','盘点只存差异，关联申请与独立审核后扣一次，重复申请拒绝',{passed:true})
- await page.reload();await action('tool-data').waitFor();await openCount(offlineCount)
+ await openPage('tool-inventory');await action('count-open-selected').waitFor();await openCount(offlineCount)
  const currentProgress=await savedCount(offlineCount)
  await page.locator(`[data-count-verified="${a}"]`).selectOption('FOUND')
  assert.equal((await post('COUNT_PROGRESS',{id:offlineCount,progressRevision:currentProgress.progressRevision,lines:[{assetId:a,counted:0}]})).status,200)
@@ -156,8 +156,7 @@ try{
  assert.equal(await page.locator(`[data-count-present="${a}"]`).isChecked(),false)
  note('R25','旧进度冲突显式提示，读取最新后重新核对',{passed:true})
  assert.equal(errors.length,0)
-
- await fs.writeFile(new URL('local_observations.json',out),JSON.stringify({date:'2026-11-08',method:'Isolated PostgreSQL schema + synthetic fixtures + pure-memory boundary reproduction; no production writes',findings,errors},null,2))
+ await fs.writeFile(new URL('local_observations.json',out),JSON.stringify({date:'2026-11-10',method:'Isolated PostgreSQL schema + synthetic fixtures + pure-memory boundary reproduction; no production writes',findings,errors},null,2))
  console.log(JSON.stringify({observations:findings.length,errors,findings},null,2))
 }finally{
  await browser?.close();if(server)await new Promise(r=>server.close(r))

@@ -29,35 +29,41 @@ try{
  server=http.createServer(createHandler(db));await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`
  browser=await chromium.launch({channel:process.platform==='win32'?'msedge':undefined,headless:true})
  const page=await browser.newPage({viewport:{width:1440,height:1050}});page.on('pageerror',e=>errors.push(e.message))
- const action=key=>page.locator(`[data-tool-table-action="${key}"]`),modal=()=>page.locator('.modal')
+ const action=key=>page.locator(`[data-tool-table-action="${key}"]`),modal=()=>page.locator('.modal, body:not(:has(.modal)) [data-tool-data-page], body:not(:has(.modal)) [data-tool-records-page]')
+ const openPage=async id=>{if(!page.url().endsWith('/'+id))await page.goto(base+'/#/functions/assets/'+id);await page.locator(id==='tool-data'?'[data-base-tab]':id==='tool-records'?'[data-record-kind]':'[data-tool-workspace]').first().waitFor()}
+ const leaveSupplement=async()=>{if(await page.locator('[data-tool-data-page],[data-tool-records-page]').count())await openPage('tool-register')}
  const clickAction=async key=>{
   const basics={dictionary:'tools',categories:'categories',devices:'devices','kit-new':'kits'}
-  if(basics[key]){await action('tool-data').click();await modal().locator(`[data-base-tab="${basics[key]}"]`).click();if(key==='kit-new')await modal().locator('[data-base-action="add"]').click();return}
-  if(['warnings','events','export-history'].includes(key)){await action('records').click();if(key==='export-history'){await modal().locator('[data-record-kind]').selectOption('events');await modal().locator('[data-record-scope]').selectOption('all');await modal().locator('[data-record-export]').click();await cancel()}else await modal().locator('[data-record-kind]').selectOption(key);return}
+  if(basics[key]){await openPage('tool-data');await modal().locator(`[data-base-tab="${basics[key]}"]`).click();if(key==='kit-new')await modal().locator('[data-base-action="add"]').click();return}
+  if(['warnings','events','export-history'].includes(key)){await openPage('tool-records');if(key==='export-history'){await modal().locator('[data-record-kind]').selectOption('events');await modal().locator('[data-record-scope]').selectOption('all');await modal().locator('[data-record-export]').click();await cancel()}else await modal().locator('[data-record-kind]').selectOption(key);return}
+  if(key==='tool-data'){await openPage('tool-data');return}
+  if(key==='records'){await openPage('tool-records');await modal().locator('[data-record-kind]').selectOption('loans');await modal().locator('[data-record-query]').fill('');await modal().locator('[data-record-scope]').selectOption('all');return}
+  if(key==='count-history'){await openPage('tool-inventory');return}
+  if(key==='count-new')await openPage('tool-inventory')
   if(['asset-config','bind-task','check-use'].includes(key)){await action('details').click();await modal().locator(`[data-tool-detail-action="${key}"]`).click();return}
   await action(key).click();if(key==='records')await modal().locator('[data-record-scope]').selectOption('all')
  }
  const fill=async(key,value)=>modal().locator(`[data-f="${key}"]`).fill(String(value)),choose=async(key,value)=>modal().locator(`[data-f="${key}"]`).selectOption(String(value))
- const confirm=async()=>{const title=await modal().getAttribute('aria-labelledby'),current=page.locator(`[aria-labelledby="${title}"]`);await current.locator('[data-modal-confirm]').click();try{await current.waitFor({state:'detached',timeout:6000})}catch{throw Error(await current.innerText())}while(await modal().count())await modal().locator('[data-modal-cancel]').click()}
- const cancel=async()=>{while(await modal().count())await modal().locator('[data-modal-cancel]').click()}
+ const confirm=async()=>{const title=await modal().getAttribute('aria-labelledby'),current=page.locator(`[aria-labelledby="${title}"]`);await current.locator('[data-modal-confirm]').click();try{await current.waitFor({state:'detached',timeout:6000})}catch{throw Error(await current.innerText())}while(await page.locator('.modal').count())await page.locator('.modal [data-modal-cancel]').click();await leaveSupplement()}
+ const cancel=async()=>{while(await page.locator('.modal').count())await page.locator('.modal [data-modal-cancel]').click();await leaveSupplement()}
  const state=async()=>(await db.read()).snapshot.data,management=async()=>(await state()).toolManagement
  const check=async id=>{await page.locator(`[data-tool-check="asset:${id}"]`).check()}
- const clear=async()=>{if(await page.locator('[data-tool-clear-selection]').count())await page.locator('[data-tool-clear-selection]').click()}
+ const clear=async()=>{await openPage('tool-register');if(await page.locator('[data-tool-clear-selection]').count())await page.locator('[data-tool-clear-selection]').click()}
  const query=async(q)=>{await page.locator('[data-tool-query] [name="query"]').fill(q);await page.locator('[data-tool-query] [type="submit"]').click()}
  await page.goto(base+'/#/functions/assets/tool-register');await page.locator('[data-tool-workspace]').waitFor()
  const before=(await db.read()).revision
  await page.goto(base+'/#/functions/settings/resources');assert.equal(await page.locator('[data-resource-tab="tools"]').count(),0)
  await page.locator('[data-resource-tools]').click();await page.locator('[data-tool-workspace]').waitFor()
- assert.deepEqual(await page.locator('[data-tool-operation-group] h3').allTextContents(),['工具管理'])
+ assert.deepEqual(await page.locator('[data-tool-operation-group] h3').allTextContents(),['工具管理','办理所选工具'])
  assert.equal(await action('settings').count(),0)
  for(const [key,title] of [['dictionary','工具字典'],['categories','工具分类'],['devices','智能设施']]){
-  await clickAction(key);assert.equal(await modal().locator('h3').innerText(),'工具资料');assert.equal(await modal().locator('[data-base-tab][aria-pressed="true"]').innerText(),title);assert.equal(await modal().locator('[data-base-kind]').count(),0)
+  await clickAction(key);assert.equal(await page.locator('main h1').innerText(),'工具资料');assert.equal(await modal().locator('[data-base-tab][aria-pressed="true"]').innerText(),title);assert.equal(await modal().locator('[data-base-kind]').count(),0)
   assert.equal(await modal().locator('[data-base-action="bind"]').isVisible(),key==='dictionary')
   assert.equal(await modal().locator('[data-base-action="event"]').isVisible(),key==='devices')
   for(const op of ['add','edit','delete'])assert.equal(await modal().locator(`[data-base-action="${op}"]`).count(),1)
   await cancel()
  }
- assert.equal(await page.locator('[data-tool-operation-group="workspace"] [data-tool-table-action]').count(),6);checks.push('默认只显示6个入口；工具资料统一维护字典分类套装设施，选择工具后才显示适用操作')
+ assert.equal(await page.locator('[data-tool-operation-group="workspace"] [data-tool-table-action]').count(),2);checks.push('左侧四个工具子页；台账底部只保留新增导出和工具办理，资料页统一维护字典分类套装设施')
  assert.equal(await page.locator('[data-tool-inspector]').count(),0);assert.equal(await page.locator('[data-tool-type]').count(),0)
  for(const text of ['工具名称','编号','条形码 / RFID','入库时间','最后检修时间','当前状态'])assert.ok((await page.locator('.tool-master-table thead').innerText()).includes(text))
  assert.ok((await page.locator('[data-tool-row="asset:'+a.id+'"]').innerText()).includes('1001001'))
@@ -173,23 +179,23 @@ try{
  await clickAction('count-confirm');await fill('reason','现场清点，一项未找到');await fill('actor','盘点员');await confirm()
  m=await management();const count=m.counts.at(-1);assert.equal(count.status,'CLOSED');assert.equal(count.lines.find(l=>l.assetId===a.id).counted,0);assert.equal(count.lines.find(l=>l.assetId===found.assetId).counted,1)
  const downloadPromise=page.waitForEvent('download');await clickAction('count-export');const download=await downloadPromise;await download.saveAs('test-artifacts/tool-count-result.csv');const csv=await fs.readFile('test-artifacts/tool-count-result.csv','utf8');assert.match(csv,/清点完成/);assert.match(csv,/实际数量/);assert.match(csv,/TABLE-001/)
- await clickAction('count-exit');await clickAction('count-history');await modal().locator(`[name="count-history"][value="${count.id}"]`).check();await confirm();assert.match(await page.locator('.tool-count-banner').innerText(),/已完成/);await clickAction('count-exit')
+ await clickAction('count-exit');await clickAction('count-history');await page.locator(`[data-tool-count-select][value="${count.id}"]`).check();await action('count-open-selected').click();assert.match(await page.locator('.tool-count-banner').innerText(),/已完成/);await clickAction('count-exit')
  checks.push('现场盘点默认未勾选，勾选代表实际有、数量可录入；确认保存差异，完成状态可导出并重新打开')
  const beforeCancel=await management()
  await clickAction('count-new');await choose('warehouseId',wh.id);await fill('actor','盘点员');await confirm()
  const cancelledId=(await management()).counts.at(-1).id
  await clickAction('count-cancel-current');await fill('actor','盘点员');await confirm()
- await clickAction('count-history');await modal().locator(`[name="count-history"][value="${cancelledId}"]`).check();await confirm()
+ await clickAction('count-history');await page.locator(`[data-tool-count-select][value="${cancelledId}"]`).check();await action('count-open-selected').click()
  assert.match(await page.locator('.tool-count-banner').innerText(),/已取消/);assert.match(await page.locator('[data-tool-bottom]').innerText(),/未调整库存/);assert.equal(await action('count-confirm').count(),0)
  assert.equal(await page.locator('[data-count-present]:enabled').count(),0)
  const cancelledDownload=page.waitForEvent('download');await clickAction('count-export');const cancelled=await cancelledDownload;const cancelledCsv=await fs.readFile(await cancelled.path(),'utf8');assert.match(cancelledCsv,/已取消（未调整库存）/);assert.match(cancelledCsv,/未确认/);assert.doesNotMatch(cancelledCsv,/盘点草稿/)
  assert.deepEqual((await management()).assets,beforeCancel.assets)
  await clickAction('count-exit')
  checks.push('取消盘点重新打开与导出均标记已取消，实盘未确认，库存不变且不能再次确认')
- await page.locator('.toast-stack').evaluateAll(els=>els.forEach(el=>el.remove()));await page.screenshot({path:'test-artifacts/tool-workspace-desktop.png',fullPage:true})
+ await openPage('tool-register');await page.locator('.toast-stack').evaluateAll(els=>els.forEach(el=>el.remove()));await page.screenshot({path:'test-artifacts/tool-workspace-desktop.png',fullPage:true})
  await page.setViewportSize({width:390,height:844});await page.screenshot({path:'test-artifacts/tool-workspace-mobile.png',fullPage:true})
  const widths=await page.evaluate(()=>({body:document.body.scrollWidth,view:innerWidth}));assert.ok(widths.body<=widths.view+2,JSON.stringify(widths))
- await action('tool-data').focus();await page.keyboard.press('Enter');await modal().waitFor();await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>document.activeElement.dataset.toolTableAction),'tool-data')
+ await action('asset-new').focus();await page.keyboard.press('Enter');await modal().waitFor();await page.keyboard.press('Escape');assert.equal(await page.evaluate(()=>document.activeElement.dataset.toolTableAction),'asset-new')
  assert.equal(errors.length,0,errors.join(';'))
  checks.push('手机无页面横向溢出，宽表独立滚动，键盘可打开关闭弹窗并恢复焦点')
  console.log(JSON.stringify({passed:true,checks},null,2))

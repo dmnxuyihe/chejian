@@ -22,21 +22,24 @@ export function toolRecordData(s,kind){
 }
 
 export function openToolRecords(ctx,deps,initial='loans',options={}){
- let kind=initial,query='',status='',selected=null,scope=options.ids?.length?'all':'todo'
+ const view=options.view||{};let kind=view.kind||initial,query=view.query||'',status=view.status||'',selected=view.selected??null,scope=view.scope||(options.ids?.length?'all':'todo')
  const isTodo=r=>r.todo??['OPEN','PENDING','ERROR'].includes(r.status)
  const inScope=r=>scope==='all'||(scope==='todo'?isTodo(r):!isTodo(r))
- const modal=openModal({title:'工具业务记录与预警',wide:true,confirmText:'关闭',body:`<div class="tool-record-query"><label class="tool-field"><span>办理范围</span><select class="select" data-record-scope><option value="todo">待办理</option><option value="done">已办结</option><option value="all">全部记录</option></select></label><label class="tool-field"><span>记录类型</span><select class="select" data-record-kind>${Object.entries(recordKinds).map(([key,text])=>`<option value="${key}" ${key===kind?'selected':''}>${text}</option>`).join('')}</select></label><label class="tool-field"><span>查询单号、工具、人员或单位</span><input class="input" type="search" data-record-query></label><label class="tool-field"><span>状态</span><select class="select" data-record-status></select></label></div><div data-record-table></div><div class="tool-bottom-buttons" data-record-actions></div><div class="tool-bottom-buttons"><button type="button" class="btn" data-record-export>导出业务记录</button></div>`})
+ const body=`<div class="tool-record-query"><label class="tool-field"><span>办理范围</span><select class="select" data-record-scope><option value="todo">待办理</option><option value="done">已办结</option><option value="all">全部记录</option></select></label><label class="tool-field"><span>记录类型</span><select class="select" data-record-kind>${Object.entries(recordKinds).map(([key,text])=>`<option value="${key}" ${key===kind?'selected':''}>${text}</option>`).join('')}</select></label><label class="tool-field"><span>查询单号、工具、人员或单位</span><input class="input" type="search" data-record-query></label><label class="tool-field"><span>状态</span><select class="select" data-record-status></select></label></div><div data-record-table></div><div class="tool-bottom-buttons" data-record-actions></div><div class="tool-bottom-buttons"><button type="button" class="btn" data-record-export>导出业务记录</button></div>`
+ const modal=options.container||openModal({title:'工具业务记录与预警',wide:true,confirmText:'关闭',body});if(options.container)modal.innerHTML=body
+ modal.querySelector('[data-record-query]').value=query
  const show=()=>{
+  Object.assign(view,{kind,query,status,selected,scope});modal.querySelector('[data-record-kind]').value=kind
   const data=toolRecordData(ctx.state,kind);modal.querySelector('[data-record-scope]').value=scope;const rows=data.rows.filter(r=>(['warnings','audit'].includes(kind)||inScope(r))&&(!options.ids?.length||options.ids.includes(r.id))&&(!status||r.status===status)&&r.cells.join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase()))
   modal.querySelector('[data-record-status]').innerHTML='<option value="">全部状态</option>'+[...new Set(data.rows.map(r=>r.status))].map(value=>`<option value="${esc(value)}" ${value===status?'selected':''}>${esc(label(value))}</option>`).join('')
   if(!rows.some(r=>r.id===selected))selected=null
   modal.querySelector('[data-record-table]').innerHTML=deps.table(['选择',...data.heads],rows.map(r=>[`<input type="radio" name="tool-record" data-record-id="${r.id}" aria-label="选择记录${r.id}" ${r.id===selected?'checked':''}>`,...r.cells.map(c=>`<span class="tool-record-text">${esc(c)}</span>`)]))
   const actions=()=>{const row=rows.find(r=>r.id===selected);modal.querySelector('[data-record-actions]').innerHTML=row?.actions.length?row.actions.map(([key,text])=>`<button type="button" class="btn" data-record-action="${key}">${text}</button>`).join(''):'<p class="pc-help">'+(row?'该记录已办结，可查看上方明细。':'选择一条记录后，在这里办理。')+'</p>'
-   modal.querySelectorAll('[data-record-action]').forEach(button=>button.addEventListener('click',()=>{openModalChild(modal,()=>deps.handle(ctx,button.dataset.recordAction,row.target||(button.dataset.recordAction==='detail'?row.assetId:row.id)),()=>{show()})}))}
-  modal.querySelectorAll('[data-record-id]').forEach(input=>input.addEventListener('change',()=>{selected=Number(input.dataset.recordId);actions()}));actions()
+   modal.querySelectorAll('[data-record-action]').forEach(button=>button.addEventListener('click',()=>{const open=()=>deps.handle(ctx,button.dataset.recordAction,row.target||(button.dataset.recordAction==='detail'?row.assetId:row.id));if(options.container){const child=open();child?.addEventListener?.('modal:closed',()=>{if(modal.isConnected)show()},{once:true})}else openModalChild(modal,open,()=>{show()})}))}
+  modal.querySelectorAll('[data-record-id]').forEach(input=>input.addEventListener('change',()=>{selected=Number(input.dataset.recordId);view.selected=selected;actions()}));actions()
  }
- modal.querySelector('[data-record-kind]').addEventListener('change',e=>{kind=e.target.value;status='';selected=null;options={};show()})
- modal.querySelector('[data-record-scope]').addEventListener('change',e=>{scope=e.target.value;options={};show()})
+ modal.querySelector('[data-record-kind]').addEventListener('change',e=>{kind=e.target.value;status='';selected=null;options.ids=null;show()})
+ modal.querySelector('[data-record-scope]').addEventListener('change',e=>{scope=e.target.value;options.ids=null;show()})
  modal.querySelector('[data-record-query]').addEventListener('input',e=>{query=e.target.value;show()})
  modal.querySelector('[data-record-status]').addEventListener('change',e=>{status=e.target.value;show()})
  modal.querySelector('[data-record-export]').addEventListener('click',()=>{const data=toolRecordData(ctx.state,kind),rows=data.rows.filter(r=>(['warnings','audit'].includes(kind)||inScope(r))&&(!options.ids?.length||options.ids.includes(r.id))&&(!status||r.status===status)&&r.cells.join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase()));deps.downloadCsv('工具'+recordKinds[kind]+'.csv',[data.heads,...rows.map(r=>r.cells)])})

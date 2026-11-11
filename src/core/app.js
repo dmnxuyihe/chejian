@@ -142,6 +142,7 @@ export function render(persist = true) {
   const page=role.pages[pageId]
   currentRoleId=role.id; currentPageId=pageId
   const ctx=roleContext(role,pageId)
+  ctx.functionEntry=entry
   if(presentationViews[entry.id]) { ctx.demo=true; ctx.demoPage=presentationViews[entry.id] }
   const pageHtml=page.render(ctx)
   app.innerHTML=renderFunctionShell({entry,pageHtml})

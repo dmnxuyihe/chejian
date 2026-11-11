@@ -3,8 +3,9 @@ import { applyToolCommand, emptyToolManagement, assetStock, toolLabels as labels
 
 import {renderToolWorkspace,toolDestination,openToolDetails,disposalContext} from '../../../shared/tool-workspace.js'
 import {returnableQuantity} from '../../../shared/tool-ledger.js'
-import {mountToolTable,downloadCsv} from '../../../shared/tool-table-controller.js'
-import {toolRecordData,recordKinds} from '../../../shared/tool-records.js'
+import {mountToolTable,downloadCsv,openBasicTable} from '../../../shared/tool-table-controller.js'
+import {toolRecordData,recordKinds,openToolRecords} from '../../../shared/tool-records.js'
+import {renderToolPage} from '../../../shared/tool-pages.js'
 import {toolCommandReceipt} from '../../../shared/tool-receipt.js'
 import {restoreToolView,clearCountOutbox} from '../../../shared/tool-table-state.js'
 
@@ -130,13 +131,20 @@ function form(ctx,title,type,body,transform=x=>x,requiredKeys=[]){
 export const toolsPage={
   render(ctx){
     ctx.state.toolManagement ||= emptyToolManagement()
-    const route=ctx.role.id+'/'+ctx.page
+    const route=ctx.functionEntry?.id||ctx.role.id+'/'+ctx.page
+    view.pageMode=ctx.functionEntry?.toolView||'ledger'
     if(view.route!==route)view.tableScroll={}
     if(view.route!==route){view.selectedKeys=[];view.columnFilters={};view.countId=null;view.countDraft={};view.queryStatus='';view.serviceQuery='';view.route=route;toolDestination(view,routeTab[ctx.page]||'ledger');view.warehouse='';view.assetId=null;view.selectedKey=null;view.ledgerType='ALL';view.borrowType='';view.ledgerStatus='';view.recordQuery='';view.quickFilter='';view.listScroll=0;view.settingsOpen=false;view.recordsOpen=!!routeTab[ctx.page]}
     restoreToolView(view)
-    return renderToolWorkspace(ctx,view)
+    return renderToolPage(ctx,view)
   },
-  mount(ctx){ctx._toolCommand=(type,payload,actor,requestId)=>command(ctx,type,payload,actor,requestId||crypto.randomUUID());mountToolTable(ctx,view,{form,input,num,select,choice,table,handle,downloadCsv})}
+  mount(ctx){
+    ctx._toolCommand=(type,payload,actor,requestId)=>command(ctx,type,payload,actor,requestId||crypto.randomUUID())
+    const deps={form,input,num,select,choice,table,handle,downloadCsv}
+    if(view.pageMode==='records'){view.recordsView||={};openToolRecords(ctx,deps,'loans',{container:document.querySelector('[data-tool-records-page]'),view:view.recordsView});return}
+    if(view.pageMode==='data'){openBasicTable(ctx,view,deps,view.dataKind||'tools',document.querySelector('[data-tool-data-page]'));return}
+    mountToolTable(ctx,view,deps)
+  }
 
 }
 

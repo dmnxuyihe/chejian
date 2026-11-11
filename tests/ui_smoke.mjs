@@ -41,10 +41,10 @@ try {
   assert.equal(await page.locator('[data-resource-tab="tools"]').count(),0)
   await page.locator('[data-resource-tools]').click()
   await page.locator('[data-tool-workspace]').waitFor()
-  assert.equal(await page.locator('[data-tool-operation-group]').count(),1)
-  await page.locator('[data-tool-table-action="tool-data"]').click()
+  assert.equal(await page.locator('[data-tool-operation-group]').count(),2)
+  await page.locator('.sidebar a[href="#/functions/assets/tool-data"]').click()
   assert.equal(await page.locator('[data-base-kind]').count(),0)
-  await page.locator('.modal-head [data-modal-close]').click()
+  await page.locator('[data-tool-data-page]').waitFor();assert.equal(await page.locator('[data-tool-data-page]').count(),1)
 
   // A disposable local fixture exercises the existing execution controls.
   await page.evaluate(async()=>{
@@ -72,7 +72,7 @@ try {
   await page.locator('[data-function-directory]').waitFor()
   await page.locator('[data-function-search]').fill('工具')
   assert.equal(await page.locator('.function-group:not([hidden])').count(),1)
-  assert.equal(await page.locator('[data-function-label]:visible').count(),1)
+  assert.equal(await page.locator('[data-function-label]:visible').count(),4)
   assert.deepEqual(errors,[])
   console.log(JSON.stringify({passed:true,functionEntries:functionEntries.length,pageChecks,actions:['monthly-default','all-function-routes','resource-tabs-and-form','assignment-detail','execution-start-and-complete','employee-data-filter','legacy-home-redirect','explicit-catalog-alias-search'],browser:'msedge'},null,2))
 } finally {
