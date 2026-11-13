@@ -5,6 +5,7 @@ import { toolAlerts } from '../src/core/tool-management.js'
 import { projectRoot } from './config.js'
 import { createPlanningService } from './planning.js'
 import { createMonthlyPlanService } from './monthly-plans-v2.js'
+import {createAuth} from './auth.js'
 import { parseTemporaryRepairFile, temporaryRepairTemplateCsv, parseComponentTemporaryFile, componentTemporaryTemplateCsv, parseComponentMonthlyFile, componentMonthlyTemplateCsv } from './temporary-repair-import.js'
 
 function json(res, status, data) {
@@ -24,6 +25,7 @@ async function body(req) {
 }
 
 export function createHandler(database) {
+  const auth=database?createAuth(database):null
   const planning = database ? createPlanningService(database) : null
   const monthlyPlans = database ? createMonthlyPlanService(database) : null
   return async (req, res) => {
@@ -33,9 +35,18 @@ export function createHandler(database) {
       if (url.pathname.startsWith('/api/')) {
         if (url.pathname === '/api/config' && req.method === 'GET') return json(res, 200, { storage: database ? 'postgresql' : 'local' })
         if (!database) return json(res, 503, { message: '当前为显式本地演示模式，未启用数据库' })
+        if(url.pathname.startsWith('/api/auth/')){
+          if(req.method==='POST'&&req.headers.origin&&new URL(req.headers.origin).host!==req.headers.host)return json(res,403,{message:'拒绝跨站写入'})
+          if(url.pathname==='/api/auth/session'&&req.method==='GET')return json(res,200,await auth.status(req))
+          if(url.pathname==='/api/auth/setup'&&req.method==='POST')return json(res,200,await auth.setup(req,res,await body(req)))
+          if(url.pathname==='/api/auth/login'&&req.method==='POST')return json(res,200,await auth.login(req,res,await body(req)))
+          if(url.pathname==='/api/auth/logout'&&req.method==='POST')return json(res,200,await auth.logout(req,res))
+          return json(res,404,{message:'登录接口不存在'})
+        }
         if(url.pathname==='/api/tools/commands'&&req.method==='POST'){
           if(req.headers.origin&&new URL(req.headers.origin).host!==req.headers.host)return json(res,403,{message:'拒绝跨站写入'})
-          return json(res,200,await database.toolCommand(await body(req)))
+          const user=await auth.requireUser(req),input=await body(req)
+          return json(res,200,await database.toolCommand({...input,actor:user.name,actorUserId:user.id}))
         }
         if(url.pathname==='/api/tools/alerts'&&req.method==='GET'){
           const current=await database.read();return json(res,200,{alerts:toolAlerts(current.snapshot.data),revision:current.revision})
@@ -201,9 +212,10 @@ export function createHandler(database) {
         if (url.pathname === '/api/state' && req.method === 'GET') return json(res, 200, await database.read())
         if (url.pathname === '/api/state' && req.method === 'PUT') {
           if (req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) return json(res, 403, { message: '拒绝跨站写入' })
+          await auth.requireUser(req)
           const value = await body(req)
           if (!value || typeof value !== 'object' || !value.snapshot) return json(res, 400, { message: '请求缺少排程数据' })
-          return json(res, 200, await database.save(value.revision, value.snapshot))
+          return json(res, 200, await database.save(value.revision, value.snapshot,{protectTools:true}))
         }
         return json(res, 404, { message: '接口不存在' })
       }
@@ -226,7 +238,7 @@ export function createHandler(database) {
 const status = error.status || (isConstraintError ? 400 : 503)
       const message = error.status ? error.message : isConstraintError ? '保存失败：原有正式数据未改变。若您正在修改已发布车辆，请检查修改后的必填信息、是否与本月其他车辆重复，或该车辆是否已有待审核变更。' : 'PostgreSQL暂不可用，数据未保存；请重试或联系服务端'
       if (!error.status) console.error('请求失败:', error.code || error.name)
-      if (!res.headersSent) json(res, status, { message })
+      if (!res.headersSent) json(res, status, { message, ...(error.toolTargetChanged?{toolTargetChanged:true,invalidToolObjects:error.invalidToolObjects}:{}), ...(Number.isSafeInteger(error.toolAssetId)&&Number.isSafeInteger(error.availableQuantity)?{toolAssetId:error.toolAssetId,availableQuantity:error.availableQuantity}:{}) })
       else res.end()
     }
   }

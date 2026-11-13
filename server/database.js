@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import pg from 'pg'
+import {isDeepStrictEqual} from 'node:util'
 import { createState } from '../src/core/state.js'
 import { exportDemoSnapshot, parseDemoSnapshot } from '../src/core/demo-persistence.js'
 import { databaseBusinessCollections, fromDatabaseStatus, stateTables, toDatabaseStatus } from './state-mapping.js'
@@ -276,6 +277,7 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
         await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`rail-maintenance:${schema}`])
         const sql = (await fs.readFile(new URL('./schema.sql', import.meta.url), 'utf8')).replaceAll('__SCHEMA_LITERAL__', literalSchema).replaceAll('__SCHEMA__', quotedSchema)
         await client.query(sql)
+        await client.query((await fs.readFile(new URL('./auth-schema.sql',import.meta.url),'utf8')).replaceAll('__SCHEMA__',quotedSchema))
         await client.query(`CREATE TABLE IF NOT EXISTS ${quotedSchema}.pc1_maintenance_media (id uuid PRIMARY KEY, file_name text NOT NULL, mime_type text NOT NULL, content bytea NOT NULL, created_at timestamptz NOT NULL DEFAULT now())`)
         const dictionariesMigrated = await ensurePlanningDictionaries(client, schema)
         const exists = await client.query(`SELECT to_regclass($1) AS legacy`, [`${schema}.metadata`])
@@ -332,7 +334,7 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
         return { revision: Number(meta.revision), snapshot: { format: 'rail-maintenance-pc1', schemaVersion: 1, savedAt: meta.updated_at.toISOString(), data } }
       } catch (error) { await client.query('ROLLBACK'); throw error } finally { client.release() }
     },
-    async save(revision, snapshot) {
+    async save(revision, snapshot,{protectTools=false}={}) {
       if (!Number.isSafeInteger(revision) || revision < 1) throw Object.assign(new Error('缺少有效的数据版本'), { status: 400 })
       let data
       try { data = parseDemoSnapshot(JSON.stringify(snapshot)).data }
@@ -343,6 +345,7 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
         await client.query('BEGIN')
         const current = (await client.query(`SELECT revision FROM ${quotedSchema}.application_state WHERE singleton FOR UPDATE`)).rows[0]
         if (Number(current.revision) !== revision) throw Object.assign(new Error('其他页面已更新数据库，请先备份当前修改，再加载数据库最新数据'), { status: 409 })
+        if(protectTools){const committed=await readData(client,definitions);if(['toolManagement','tools','toolRequirements'].some(key=>!isDeepStrictEqual(data[key],committed[key])))throw Object.assign(Error('工具资料、业务及经办记录必须通过工具管理办理，不能直接覆盖'),{status:403})}
         await assertNewSchedulesPublished(client,data)
         await client.query('SET CONSTRAINTS ALL DEFERRED')
         await writeData(client, data, definitions)

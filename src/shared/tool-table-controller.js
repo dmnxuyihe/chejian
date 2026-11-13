@@ -1,16 +1,16 @@
+import {toolDateTime,toolDateTimeInput,toolDateInput,toolTimeValue,toolDayValue} from './tool-dates.js'
 import {escapeHtml as esc,openModal,toast,openModalChild} from '../core/ui.js'
-import {toolTableData,tableColumns,filterToolTable} from './tool-table.js'
+import {toolTableData,tableColumns,filterToolTable,selectedToolActions} from './tool-table.js'
 import {returnableQuantity} from './tool-ledger.js'
 import {countLossRemaining} from '../core/tool-management.js'
 import {openToolRecords} from './tool-records.js'
-import {persistToolView,countDrafts,writeCountOutbox,clearCountOutbox} from './tool-table-state.js'
+import {persistToolView,countDrafts,countRuntime,reloadCountRuntime,writeCountOutbox,clearCountOutbox} from './tool-table-state.js'
 
 const name=(rows,id)=>rows.find(r=>r.id===id)?.name||'—'
 const btn=(key,label,disabled=false,primary=false)=>`<button class="btn ${primary?'btn-primary':''}" type="button" data-base-action="${key}" ${disabled?'disabled':''}>${label}</button>`
-let countSaveTimer=null
 const draftFor=(v,line)=>v.countDraft?.[line.assetId]||{verified:line.counted!==null&&line.counted!==undefined,present:Number(line.counted)>0,counted:line.counted??0}
 function countStatus(v){
- const el=document.querySelector('[data-count-save-status]');if(!el)return
+ const el=document.querySelector('[data-count-save-status]');if(!el||v.countId&&document.querySelector('[data-tool-count-id]')?.dataset.toolCountId!==String(v.countId))return
  el.textContent=v.countSaveState==='error'?`保存未完成：${v.countSaveError}。${v.countLocalDurable?'修改已留在本机，请重试或读取数据库进度复核。':'本机暂存不可用，请保持此页并重试保存。'}`:v.countSaveState==='saving'?'正在保存进度…':v.countSaveState==='pending'?'修改已暂存本机，等待同步…':v.countSavedAt?`已保存 ${new Date(v.countSavedAt).toLocaleTimeString('zh-CN')}`:'尚未修改'
  el.classList.toggle('is-error',v.countSaveState==='error')
  document.querySelector('[data-tool-table-action="count-retry"]')?.toggleAttribute('hidden',v.countSaveState!=='error')
@@ -18,6 +18,7 @@ function countStatus(v){
 function scheduleCountProgress(ctx,v,id,value){
  const count=ctx.state.toolManagement?.counts.find(row=>row.id===v.countId)
  if(!count||count.status!=='OPEN')return
+ v=countRuntime(count)
  v.countOutbox||={progressRevision:count.progressRevision||0,changes:{},requestId:crypto.randomUUID()}
  v.countOutbox.changes[id]=value
  // Each newly edited payload needs a new idempotency key. An in-flight snapshot
@@ -25,15 +26,21 @@ function scheduleCountProgress(ctx,v,id,value){
  v.countOutbox.requestId=crypto.randomUUID();v.countSaveState='pending'
  try{writeCountOutbox(count,v.countOutbox);v.countLocalDurable=true}catch{v.countLocalDurable=false;v.countSaveState='error';v.countSaveError='本机暂存不可用，请等待数据库保存后再离开'}
  countStatus(v)
- clearTimeout(countSaveTimer)
- countSaveTimer=setTimeout(()=>saveCountProgress(ctx,v),250)
+ clearTimeout(v.timer)
+ v.timer=setTimeout(()=>saveCountProgress(ctx,v),250)
 }
 export async function saveCountProgress(ctx,v){
- clearTimeout(countSaveTimer)
+ const target=ctx.state.toolManagement?.counts.find(row=>row.id===v.countId);if(!target)return true
+ v=countRuntime(target)
+ clearTimeout(v.timer)
  if(v.countSaving){await v.countSaving;return v.countOutbox?saveCountProgress(ctx,v):v.countSaveState!=='error'}
  const count=ctx.state.toolManagement?.counts.find(row=>row.id===v.countId),outbox=v.countOutbox
  if(!count||!outbox)return true
- const sent=structuredClone(outbox);v.countSaveState='saving';countStatus(v)
+ // Replay an unacknowledged request before sending the newer draft.
+ const sent=structuredClone(outbox.pending||{progressRevision:outbox.progressRevision,changes:outbox.changes,requestId:outbox.requestId})
+ outbox.pending=sent
+ try{writeCountOutbox(count,outbox);v.countLocalDurable=true}catch{v.countLocalDurable=false}
+ v.countSaveState='saving';countStatus(v)
  v.countSaving=(async()=>{
   try{
    const ok=await ctx._toolCommand('COUNT_PROGRESS',{id:count.id,progressRevision:sent.progressRevision,lines:Object.entries(sent.changes).map(([id,counted])=>({assetId:Number(id),counted}))},count.actor||'盘点人',sent.requestId)
@@ -41,23 +48,24 @@ export async function saveCountProgress(ctx,v){
    const current=ctx.state.toolManagement.counts.find(r=>r.id===count.id)
    for(const [id,value] of Object.entries(sent.changes))if(v.countOutbox?.changes[id]===value)delete v.countOutbox.changes[id]
    v.countSavedAt=current.updatedAt
-   if(Object.keys(v.countOutbox?.changes||{}).length){v.countOutbox.progressRevision=current.progressRevision;v.countOutbox.requestId=crypto.randomUUID();writeCountOutbox(count,v.countOutbox);v.countSaveState='pending'}
+   if(Object.keys(v.countOutbox?.changes||{}).length){delete v.countOutbox.pending;v.countOutbox.progressRevision=sent.progressRevision+1;v.countOutbox.requestId=crypto.randomUUID();writeCountOutbox(count,v.countOutbox);v.countSaveState='pending'}
    else{v.countOutbox=null;clearCountOutbox(count);v.countSaveState='saved'}
    return true
   }catch(error){v.countSaveState='error';v.countSaveError=error.message;return false}
   finally{v.countSaving=null;countStatus(v)}
  })()
  const ok=await v.countSaving
- if(ok&&v.countOutbox)countSaveTimer=setTimeout(()=>saveCountProgress(ctx,v),0)
+ if(ok&&v.countOutbox)v.timer=setTimeout(()=>saveCountProgress(ctx,v),0)
  return ok
 }
 export function mountToolTable(ctx,v,deps){
  const scroller=document.querySelector('.tool-table-scroll'),scrollKey=v.countId?`count:${v.countId}`:'ledger'
  v.tableScroll||={}
  if(scroller){const position=v.tableScroll[scrollKey];if(position){scroller.scrollTop=position.top;scroller.scrollLeft=position.left}scroller.addEventListener('scroll',()=>{if(!scroller.isConnected)return;v.tableScroll[scrollKey]={top:scroller.scrollTop,left:scroller.scrollLeft};persistToolView(v)},{passive:true})}
- const render=(focus,resetScroll=false)=>{if(scroller)v.tableScroll[scrollKey]=resetScroll?{top:0,left:0}:{top:scroller.scrollTop,left:scroller.scrollLeft};persistToolView(v);ctx.rerender(false);if(focus)document.querySelector(focus)?.focus({preventScroll:true})}
+ const render=(focus,resetScroll=false)=>{if(scroller)v.tableScroll[scrollKey]=resetScroll?{top:0,left:0}:{top:scroller.scrollTop,left:scroller.scrollLeft};persistToolView(v);ctx.rerender(false);persistToolView(v);if(focus)document.querySelector(focus)?.focus({preventScroll:true})}
  document.querySelector('[data-tool-query]')?.addEventListener('submit',e=>{
-  e.preventDefault();Object.assign(v,Object.fromEntries(new FormData(e.currentTarget)))
+  e.preventDefault();Object.assign(v,Object.fromEntries(new FormData(e.currentTarget)));v.queryDraft=null
+  if(v.queryStatus)v.ledgerScope=v.queryStatus==='待完善登记'?'legacy':'registered'
   if(v.scanMode){const code=v.query.trim();const rows=filterToolTable(toolTableData(ctx.state),{...v,query:''}),matches=rows.filter(r=>r.code===code||r.asset?.tag===code)
    if(matches.length!==1)v.scanMessage=matches.length?'标签对应多项，请按编号核对':'当前查询范围未找到此编号或标签，请核对条码与筛选条件'
    else if(v.selectedKeys.includes(matches[0].key))v.scanMessage=`${matches[0].code} 已在所选清单，未重复添加`
@@ -67,13 +75,17 @@ export function mountToolTable(ctx,v,deps){
   render('[data-tool-query] input',true)
  })
  document.querySelector('[data-tool-scan-mode]')?.addEventListener('change',e=>{v.scanMode=e.target.checked;v.scanMessage='扫码用于连续选择工具；数量在办理表单中确认。';render('[data-tool-query] input')})
- const reset=()=>{Object.assign(v,{query:'',warehouse:'',queryStatus:'',serviceQuery:'',borrowType:'',columnFilters:{},sortKey:'',sortDirection:'asc'});render(undefined,true)}
+ const clearContextUrl=()=>{if(ctx.functionParams?.size){history.replaceState(null,'',location.hash.split('?')[0]);v.route=(ctx.functionEntry?.id||ctx.role.id+'/'+ctx.page)+'?';ctx.functionParams=new URLSearchParams()}}
+ const reset=()=>{clearContextUrl();Object.assign(v,{assetIds:undefined,exactAssetId:'',toolId:'',availableOnly:false,serviceOnly:false,excludeKits:false,query:'',queryDraft:null,warehouse:'',queryStatus:'',serviceQuery:'',borrowType:'',columnFilters:{},sortKey:'',sortDirection:'asc'});render(undefined,true)}
  document.querySelector('[data-tool-reset-query]')?.addEventListener('click',reset)
+ document.querySelectorAll('[data-tool-filter-remove]').forEach(el=>el.addEventListener('click',()=>{delete v.columnFilters[el.dataset.toolFilterRemove];render()}))
+ document.querySelector('[data-tool-context-clear]')?.addEventListener('click',()=>{clearContextUrl();Object.assign(v,{assetIds:undefined,exactAssetId:'',toolId:'',availableOnly:false,serviceOnly:false,excludeKits:false});render()})
  document.querySelector('[data-tool-clear-filters]')?.addEventListener('click',()=>{v.columnFilters={};render()})
  const toggle=(key,checked)=>{v.selectedKeys=checked?[...new Set([...v.selectedKeys,key])]:v.selectedKeys.filter(k=>k!==key);render(`[data-tool-check="${key}"]`)}
  document.querySelectorAll('[data-tool-check]').forEach(el=>el.addEventListener('change',()=>toggle(el.dataset.toolCheck,el.checked)))
  document.querySelectorAll('[data-tool-toggle]').forEach(el=>el.addEventListener('click',()=>toggle(el.dataset.toolToggle,!v.selectedKeys.includes(el.dataset.toolToggle))))
- document.querySelectorAll('[data-tool-detail]').forEach(el=>el.addEventListener('click',()=>openEntryDetail(ctx,v,deps,el.dataset.toolDetail)))
+ document.querySelectorAll('[data-tool-ledger-scope]').forEach(el=>el.addEventListener('click',()=>{if(v.ledgerScope===el.dataset.toolLedgerScope)return;if(v.selectedKeys.length)toast('已切换登记范围','已清空原范围的选择，请在当前列表重新选择','info');v.selectedKeys=[];v.ledgerScope=el.dataset.toolLedgerScope;v.queryStatus='';v.query='';v.queryDraft=null;v.warehouse='';v.columnFilters={};v.assetIds=undefined;v.exactAssetId='';v.toolId='';clearContextUrl();render(undefined,true)}))
+ document.querySelectorAll('[data-tool-detail]').forEach(el=>el.addEventListener('click',()=>openEntryDetail(ctx,v,deps,el.dataset.toolDetail).catch(error=>toast('无法打开工具资料',error.message,'warning'))))
  document.querySelectorAll('[data-tool-remove-selection]').forEach(el=>el.addEventListener('click',()=>toggle(el.dataset.toolRemoveSelection,false)))
  document.querySelector('[data-tool-clear-selection]')?.addEventListener('click',()=>{v.selectedKeys=[];render()})
  document.querySelectorAll('[data-tool-stat]').forEach(el=>el.addEventListener('click',()=>{const key=el.dataset.toolStat;if(key==='warning')return tableAction(ctx,v,'warnings',deps);Object.assign(v,{queryStatus:key==='borrowed'?'借出':key==='service'?'送检 / 送修':key==='pending'?'待审核':'待完善登记',query:'',warehouse:'',serviceQuery:'',borrowType:'',columnFilters:{},selectedKeys:[]});render(undefined,true)}))
@@ -82,19 +94,36 @@ export function mountToolTable(ctx,v,deps){
  if(allBox){allBox.indeterminate=boxes.some(e=>e.checked)&&!boxes.every(e=>e.checked);allBox.addEventListener('change',()=>{const keys=boxes.map(el=>el.dataset.toolCheck);v.selectedKeys=allBox.checked?[...new Set([...v.selectedKeys,...keys])]:v.selectedKeys.filter(k=>!keys.includes(k));render('[data-tool-select-all]')})}
  document.querySelectorAll('[data-tool-filter-open]').forEach(el=>el.addEventListener('click',()=>openFilter(ctx,v,el.dataset.toolFilterOpen)))
  document.querySelectorAll('[data-tool-count-select]').forEach(el=>el.addEventListener('change',()=>{v.inventorySelected=Number(el.value);const open=document.querySelector('[data-tool-table-action="count-open-selected"]'),hint=document.querySelector('[data-count-open-hint]');if(open)open.disabled=!v.inventorySelected;if(hint)hint.textContent=v.inventorySelected?`已选择盘点单 #${v.inventorySelected}`:'先选择一张盘点单，再打开查看。'}))
- document.querySelectorAll('[data-tool-table-action]').forEach(el=>el.addEventListener('click',async()=>{try{await tableAction(ctx,v,el.dataset.toolTableAction,deps)}catch(error){toast('未办理',error.message,'warning')}}))
+ const queryForm=document.querySelector('[data-tool-query]'),queryDirty=()=>queryForm?[...new FormData(queryForm)].some(([key,value])=>value!==String(v[key]??'')):false
+ if(queryForm&&v.queryDraft)for(const [key,value] of Object.entries(v.queryDraft)){const el=queryForm.elements.namedItem(key);if(el)el.value=value}
+ const showPending=()=>{const hint=document.querySelector('[data-query-pending]');if(hint)hint.hidden=!queryDirty()}
+ const saveDraft=()=>{v.queryDraft=queryDirty()?Object.fromEntries(new FormData(queryForm)):null;persistToolView(v);showPending()}
+ queryForm?.addEventListener('input',saveDraft)
+ queryForm?.addEventListener('change',saveDraft)
+ showPending()
+ document.querySelectorAll('[data-tool-table-action]').forEach(el=>el.addEventListener('click',async()=>{try{if(queryDirty()&&!['asset-new','reset-selection'].includes(el.dataset.toolTableAction)){toast('请先查询','查询条件尚未应用，未按旧范围办理或导出','warning');return}await tableAction(ctx,v,el.dataset.toolTableAction,deps)}catch(error){toast('未办理',error.message,'warning')}}))
  document.querySelectorAll('[data-tool-receipt-group]').forEach(el=>el.addEventListener('click',()=>{const group=v.lastReceipt?.groups?.[Number(el.dataset.toolReceiptGroup)];if(group)openToolRecords(ctx,deps,group.kind,{ids:group.ids})}))
  document.querySelectorAll('[data-count-present]').forEach(el=>el.addEventListener('change',()=>{const id=Number(el.dataset.countPresent),row=ctx.state.toolManagement.counts.find(c=>c.id===v.countId)?.lines.find(l=>l.assetId===id);if(!row)return;v.countDraft[id]={verified:el.checked,present:el.checked,counted:el.checked?Math.max(1,row.expected):null};scheduleCountProgress(ctx,v,id,v.countDraft[id].counted);render(`[data-count-present="${id}"]`)}))
  document.querySelectorAll('[data-count-verified]').forEach(el=>el.addEventListener('change',()=>{const id=Number(el.dataset.countVerified),row=ctx.state.toolManagement.counts.find(c=>c.id===v.countId)?.lines.find(l=>l.assetId===id);if(!row)return;const value=el.value;v.countDraft[id]={verified:value!=='UNVERIFIED',present:value==='FOUND',counted:value==='UNVERIFIED'?null:value==='FOUND'?Math.max(1,row.expected):0};scheduleCountProgress(ctx,v,id,v.countDraft[id].counted);render(`[data-count-verified="${id}"]`)}))
  document.querySelectorAll('[data-count-actual]').forEach(el=>el.addEventListener('input',()=>{const draft=v.countDraft[el.dataset.countActual]||{};draft.counted=el.value===''?null:Number(el.value);draft.verified=draft.counted!==null;draft.present=draft.counted>0;v.countDraft[el.dataset.countActual]=draft;scheduleCountProgress(ctx,v,el.dataset.countActual,draft.counted)}))
- if(v.countId){const c=ctx.state.toolManagement.counts.find(c=>c.id===v.countId);if(c){countDrafts(v,c);countStatus(v);if(v.countOutbox&&v.countSaveState==='pending'&&!v.countSaving){clearTimeout(countSaveTimer);countSaveTimer=setTimeout(()=>saveCountProgress(ctx,v),250)}}}
+ if(v.countId){const c=ctx.state.toolManagement.counts.find(c=>c.id===v.countId);if(c){countDrafts(v,c);countStatus(v);if(v.countOutbox&&v.countSaveState==='pending'&&!v.countSaving){const runtime=countRuntime(c);clearTimeout(runtime.timer);runtime.timer=setTimeout(()=>saveCountProgress(ctx,runtime),250)}}}
  const panel=document.querySelector('[data-tool-bottom].has-selection')
  v.panelObserver?.disconnect()
- if(panel&&scroller){const size=()=>{scroller.style.scrollPaddingBottom='20px';const workspace=document.querySelector('[data-tool-workspace]');if(workspace)workspace.style.paddingBottom=`${panel.offsetHeight+20}px`};size();v.panelObserver=new ResizeObserver(size);v.panelObserver.observe(panel)}
+ v.fitAbort?.abort()
+ if(scroller&&document.querySelector('.tool-simple-ledger')){
+  const footer=document.querySelector('.tool-ledger-command'),fit=()=>{if(!scroller.isConnected)return;const available=innerHeight-scroller.getBoundingClientRect().top-(footer?.offsetHeight||0)-24;scroller.style.height=`${Math.max(160,available)}px`}
+  fit();v.panelObserver=new ResizeObserver(fit);v.panelObserver.observe(footer);v.panelObserver.observe(document.querySelector('main'));v.fitAbort=new AbortController();window.addEventListener('resize',fit,{signal:v.fitAbort.signal})
+ }
+ if(panel&&scroller&&!panel.closest('.tool-simple-ledger')){const size=()=>{scroller.style.scrollPaddingBottom='20px';const workspace=document.querySelector('[data-tool-workspace]');if(workspace)workspace.style.paddingBottom=`${panel.offsetHeight+20}px`};size();v.panelObserver=new ResizeObserver(size);v.panelObserver.observe(panel)}
 }
-function openEntryDetail(ctx,v,d,key){const previous=v.selectedKeys;v.selectedKeys=[key];try{tableAction(ctx,v,'details',d)}finally{v.selectedKeys=previous}}
+async function openEntryDetail(ctx,v,d,key){
+ const e=toolTableData(ctx.state).find(e=>e.key===key);if(!e)return
+ const scoped={...v,selectedKeys:[key]},modal=await tableAction(ctx,scoped,'edit',d)
+ if(modal?.querySelector){const allowed=new Set(selectedToolActions(ctx.state,[e]).map(([key])=>key)),button=document.createElement('button');button.type='button';button.className='btn tool-delete-action';button.dataset.toolEditorDelete='';button.textContent='删除工具';button.disabled=!allowed.has('delete');if(button.disabled)button.title='该工具存在套装或历史业务引用，不能删除';modal.querySelector('.modal-actions').prepend(button);if(!allowed.has('edit')){modal.confirmBlocked=true;modal.querySelector('[data-modal-confirm]').disabled=true;modal.querySelectorAll('[data-f]:not([data-f=actor])').forEach(input=>input.disabled=true);modal.querySelector('[data-tool-form-error]').textContent='该工具有未完成业务，当前可查看资料；业务办结后才能修改。'}button.addEventListener('click',()=>openModalChild(modal,()=>tableAction(ctx,scoped,'delete',d),()=>{if(toolTableData(ctx.state).some(row=>row.key===key))return true;modal.closeModal?.('deleted',true);return false}))}
+ return modal
+}
 function openFilter(ctx,v,key){
- const label=tableColumns.find(c=>c[0]===key)[1],values=[...new Set(toolTableData(ctx.state).map(e=>e.values[key]))].sort((a,b)=>a.localeCompare(b,'zh-CN',{numeric:true})),selected=v.columnFilters?.[key]
+ const label=tableColumns.find(c=>c[0]===key)[1],values=[...new Set(filterToolTable(toolTableData(ctx.state),{ledgerScope:v.ledgerScope}).map(e=>e.values[key]))].sort((a,b)=>a.localeCompare(b,'zh-CN',{numeric:true})),selected=v.columnFilters?.[key]
  const wrap=openModal({title:`筛选${label}`,body:`<label class="tool-field"><span>搜索筛选值</span><input class="input" data-filter-value-search type="search"></label><label class="tool-filter-all"><input type="checkbox" data-filter-all ${!selected?'checked':''}>全选显示的值</label><div class="tool-filter-options">${values.map((value,i)=>`<label data-filter-label><input type="checkbox" data-filter-option="${i}" ${!selected||selected.includes(value)?'checked':''}><span>${esc(value)}</span></label>`).join('')}</div><p class="pc-help">可同时勾选多个值；保留其他列的筛选条件。</p>`,confirmText:'应用筛选',onConfirm(){const picked=[...wrap.querySelectorAll('[data-filter-option]:checked')].map(el=>values[Number(el.dataset.filterOption)]);v.columnFilters||={};if(picked.length===values.length)delete v.columnFilters[key];else v.columnFilters[key]=picked;ctx.rerender(false)}})
  const sync=()=>{const fields=[...wrap.querySelectorAll('[data-filter-label]:not([hidden]) input')],all=wrap.querySelector('[data-filter-all]');all.checked=fields.length>0&&fields.every(el=>el.checked);all.indeterminate=fields.some(el=>el.checked)&&!all.checked}
  wrap.querySelector('[data-filter-value-search]').addEventListener('input',e=>{wrap.querySelectorAll('[data-filter-label]').forEach(label=>label.hidden=!label.textContent.toLowerCase().includes(e.target.value.toLowerCase()));sync()})
@@ -129,7 +158,7 @@ export async function tableAction(ctx,v,action,d){
  if(action==='edit'){
   if(selected.length===1){const e=one();return handle(ctx,e.type==='KIT'?'kit-edit':e.type==='LEGACY'?'tool-edit':'asset-edit',e.id)}
   if(!selected.length||selected.some(e=>!e.asset))throw Error('批量修改请选择实物工具；套装组成及待登记品种请分别修改')
-  return form(ctx,'批量修改工具信息','BATCH',`<div class="tool-wide">${table(['工具名称','编号','条形码 / RFID（可选）','入库时间（可选）','最后检修时间（可选）'],selected.map(e=>[esc(e.title),`<input class="input" required data-edit-code="${e.id}" aria-label="${esc(e.code)}编号" value="${esc(e.code)}">`,`<input class="input" data-edit-tag="${e.id}" aria-label="${esc(e.code)}条形码" value="${esc(e.asset.tag)}">`,`<input class="input" type="datetime-local" data-edit-received="${e.id}" value="${esc(e.asset.receivedAt?.slice(0,16)||'')}">`,`<input class="input" type="date" data-edit-repair="${e.id}" value="${esc(e.asset.lastRepairAt?.slice(0,10)||'')}">`]))}</div>`,(p,modal)=>({commands:selected.map(e=>({type:'ASSET_EDIT',payload:{assetId:e.id,code:modal.querySelector(`[data-edit-code="${e.id}"]`).value,tag:modal.querySelector(`[data-edit-tag="${e.id}"]`).value,receivedAt:modal.querySelector(`[data-edit-received="${e.id}"]`).value,lastRepairAt:modal.querySelector(`[data-edit-repair="${e.id}"]`).value}}))}))
+  return form(ctx,'批量修改工具信息','BATCH',`<div class="tool-wide">${table(['工具名称','编号','条形码 / RFID（可选）','入库时间（可选）','最后检修时间（可选）'],selected.map(e=>[esc(e.title),`<input class="input" required data-edit-code="${e.id}" aria-label="${esc(e.code)}编号" value="${esc(e.code)}">`,`<input class="input" data-edit-tag="${e.id}" aria-label="${esc(e.code)}条形码" value="${esc(e.asset.tag)}">`,`<input class="input" type="datetime-local" data-edit-received="${e.id}" value="${esc(toolDateTimeInput(e.asset.receivedAt))}">`,`<input class="input" type="date" data-edit-repair="${e.id}" value="${esc(toolDateInput(e.asset.lastRepairAt))}">`]))}</div>`,(p,modal)=>({commands:selected.map(e=>({type:'ASSET_EDIT',payload:{assetId:e.id,code:modal.querySelector(`[data-edit-code="${e.id}"]`).value,tag:modal.querySelector(`[data-edit-tag="${e.id}"]`).value,receivedAt:toolTimeValue(modal.querySelector(`[data-edit-received="${e.id}"]`).value,e.asset.receivedAt),lastRepairAt:toolDayValue(modal.querySelector(`[data-edit-repair="${e.id}"]`).value,e.asset.lastRepairAt)}}))}))
  }
  if(action==='details'){const e=one();if(e.asset)return handle(ctx,'detail',e.id);if(e.kit)return openModal({title:e.title,wide:true,body:table(['成员工具','编号','组成数量','状态'],e.members.map(({entry,line})=>[esc(entry.title),esc(entry.code),line.quantity,esc(entry.balance.states.join(' · '))])),confirmText:'关闭'});return openModal({title:`${e.title} · 原库存`,body:`<p>品种编号：${esc(e.code)}</p><p>当前状态：待完善登记；原库存 ${e.tool.quantity} 件。登记后可查看实物档案并办理借还。</p>`,confirmText:'关闭'})}
  if(action==='count-new')return form(ctx,'开始仓库盘点','COUNT_CREATE',select('warehouseId','盘点工具库',m.warehouses,v.warehouse))
@@ -141,9 +170,10 @@ export async function tableAction(ctx,v,action,d){
   const c=m.counts.find(c=>c.id===v.countId)
   const loaded=await ctx.demoPersistence?.load();if(loaded?.ok===false)throw Error(loaded.message)
   if(c)clearCountOutbox(c)
-  v.countDraftId=null;v.countOutbox=null;ctx.rerender(false);return
+  const current=ctx.state.toolManagement.counts.find(row=>row.id===v.countId);if(current)reloadCountRuntime(v,current)
+  v.countDraftId=null;ctx.rerender(false);return
  }
- if(action==='count-exit'){if(v.countOutbox&&!await saveCountProgress(ctx,v))throw Error('进度尚未同步，修改已留在本机。请重试保存后返回');v.countId=null;v.countDraft={};v.countDraftId=null;ctx.rerender(false);return}
+ if(action==='count-exit'){if(v.countOutbox&&!await saveCountProgress(ctx,v))throw Error('进度尚未同步，修改已留在本机。请重试保存后返回');v.countId=null;v.countDraftId=null;ctx.rerender(false);return}
  const count=m.counts.find(c=>c.id===v.countId)
  if(action==='count-confirm'){
   if(!count||count.status!=='OPEN')throw Error('盘点已完成或不存在')
@@ -162,13 +192,13 @@ export async function tableAction(ctx,v,action,d){
  if(action==='count-cancel-current')return form(ctx,'取消本次盘点','COUNT_CANCEL','<p class="tool-wide">本次未完成的盘点保留为已取消，不调整库存。</p>',p=>({...p,id:count.id}))
  if(action==='count-export'){
   if(!count)throw Error('请选择盘点单')
-  return downloadCsv(`盘点状态_${count.id}.csv`,[['工具库','工具名称','编号','条形码 / RFID','应有数量','实际数量','差异','盘点状态','经办人','确认时间'],...count.lines.map(line=>{const e=all.find(e=>e.asset?.id===line.assetId),draft=draftFor(v,line),actual=count.status==='CLOSED'?line.counted:draft.verified?draft.counted:'';return [name(m.warehouses,count.warehouseId),e?.title,e?.code,e?.asset?.tag,line.expected,count.status==='CANCELLED'?'未确认':actual,count.status==='CANCELLED'||actual===''?'':actual-line.expected,count.status==='CLOSED'?'清点完成':count.status==='CANCELLED'?'已取消（未调整库存）':draft.verified?(draft.present?'已找到':'已核对未找到'):'未核对',count.confirmedBy||count.actor,count.finishedAt||'']})])
+  return downloadCsv(`盘点状态_${count.id}.csv`,[['工具库','工具名称','编号','条形码 / RFID','应有数量','实际数量','差异','盘点状态','经办人','确认时间'],...count.lines.map(line=>{const e=all.find(e=>e.asset?.id===line.assetId),draft=draftFor(v,line),actual=count.status==='CLOSED'?line.counted:draft.verified?draft.counted:'';return [name(m.warehouses,count.warehouseId),e?.title,e?.code,e?.asset?.tag,line.expected,count.status==='CANCELLED'?'未确认':actual,count.status==='CANCELLED'||actual===''?'':actual-line.expected,count.status==='CLOSED'?'清点完成':count.status==='CANCELLED'?'已取消（未调整库存）':draft.verified?(draft.present?'已找到':'已核对未找到'):'未核对',count.confirmedBy||count.actor,toolDateTime(count.finishedAt,'')]})])
  }
  if(!selected.length)throw Error('请先勾选需要操作的工具')
  if(action==='delete'){
   if(selected.some(e=>e.type==='LEGACY'))throw Error('待完善登记的记录仍有原库存，请先完善登记，再通过报废等业务处置库存')
   const commands=selected.map(e=>({type:e.type==='KIT'?'KIT_DELETE':e.type==='LEGACY'?'TOOL_DELETE':'ASSET_DELETE',payload:e.asset?{assetId:e.id}:{id:e.id}}))
-  return form(ctx,'删除所选记录','BATCH',`<p class="tool-wide">确认删除 ${selected.length} 项？已被业务引用的记录不允许删除，系统会整体拒绝本次操作并保留数据。</p>`,()=>({commands}))
+   return form(ctx,'删除所选记录','BATCH',`<p class="tool-wide">确认删除 ${selected.length} 项？${selected.map(e=>`${esc(e.title)} · ${esc(e.code)}`).join('；')}。</p><p class="tool-wide">删除后无法在页面直接恢复。操作日志会保留对象快照；已被业务引用的记录不允许删除，系统会整体拒绝本次操作并保留数据。</p>`,()=>({commands}))
  }
  if(selected.some(e=>e.type==='LEGACY'))throw Error('所选项包含待完善登记的原库存，请先完善登记')
  if(['service-finish','transfer-finish','disposal-review'].includes(action))return finishBatch(ctx,v,action,selected,{...d,form})
@@ -179,13 +209,15 @@ export async function tableAction(ctx,v,action,d){
  for(const e of selected)for(const id of e.asset?[e.id]:e.kit.lines.map(l=>l.assetId)){if(used.has(id))throw Error('所选套装与工具包含重复成员，请取消重复勾选');used.add(id)}
  const titles={borrow:'批量借出',transfer:'两库之间调拨',inspection:'批量送检',repair:'批量送修',lost:'批量遗失申请',scrap:'批量报废申请'}
  if(!titles[action])throw Error('暂不支持该操作')
- const rows=selected.map(e=>[esc(e.title),esc(e.code),e.kit?'整套':`<input class="input" type="number" min="1" step="1" value="1" required data-batch-quantity="${e.key}" aria-label="${esc(e.code)}办理数量" ${e.asset.mode==='NUMBERED'?'max="1" readonly':''}>`,esc(e.values.state),['lost','scrap'].includes(action)?`<select class="select" data-batch-source="${e.key}" aria-label="${esc(e.code)}申请来源"><option value="">在库工具</option>${e.balance.loans.map(l=>`<option value="${l.id}" ${e.balance.stock<=0?'selected':''}>#${l.id} ${esc(l.borrower)}</option>`).join('')}</select>`:''])
- let body=`<div class="tool-wide">${table(['工具名称','编号','数量','当前状态','申请来源'],rows)}</div>`
+  const quantityLimit=e=>['borrow','transfer'].includes(action)?e.balance.available:['inspection','repair','scrap'].includes(action)?e.balance.physicalAvailable:null
+  const rows=selected.map(e=>{const maximum=e.kit?null:quantityLimit(e);return [esc(e.title),esc(e.code),e.kit?'整套':`<input class="input" type="number" min="1" step="1" value="1" required data-batch-quantity="${e.key}" aria-label="${esc(e.code)}办理数量" aria-describedby="tool-quantity-help-${e.key} tool-quantity-error-${e.key}" ${maximum!==null?`max="${maximum}"`:''} ${e.asset.mode==='NUMBERED'?'readonly':''}><small class="tool-quantity-help" id="tool-quantity-help-${e.key}" data-tool-quantity-limit>${maximum!==null?`当前最多可办理 ${maximum} 件`:''}</small><span class="tool-quantity-error" id="tool-quantity-error-${e.key}" data-tool-quantity-error role="alert"></span>`,`<span data-tool-batch-state="${e.key}">${esc(e.values.state)}</span>`,['lost','scrap'].includes(action)?`<select class="select" data-batch-source="${e.key}" aria-label="${esc(e.code)}申请来源"><option value="">在库工具</option>${e.balance.loans.map(l=>`<option value="${l.id}" ${e.balance.stock<=0?'selected':''}>#${l.id} ${esc(l.borrower)}</option>`).join('')}</select>`:'']})
+ const withSource=['lost','scrap'].includes(action)
+ let body=`<div class="tool-wide">${table(withSource?['工具名称','编号','数量','当前状态','申请来源']:['工具名称','编号','数量','当前状态'],withSource?rows:rows.map(r=>r.slice(0,4)))}</div>`
  if(action==='borrow')body+=input('borrower','领用人')+input('borrowType','借用类型','检修使用')+input('dueAt','预计归还时间','','datetime-local')+select('scheduleTaskId','关联作业任务（可选，用于防错）',s.schedules.filter(row=>!['CANCELLED','COMPLETED'].includes(row.status)&&s.vehicleRepairs.some(v=>v.id===row.vehicleRepairId&&v.currentVersionId===row.versionId)&&s.scheduleVersions.some(v=>v.id===row.versionId&&v.status==='PUBLISHED')),'',r=>`${r.id} · ${s.tasks.find(t=>t.id===r.taskId)?.name||''}`)
  if(action==='transfer')body+=`<p class="tool-wide">调拨方向由每项当前所属库自动确定：检修工具库 → 整备工具库；整备工具库 → 检修工具库。</p>`
  if(['inspection','repair'].includes(action))body+=input('provider','检定 / 维修单位')+input('reason','原因说明')
  if(['lost','scrap'].includes(action))body+=input('reason','申请原因')
- return form(ctx,titles[action],'BATCH',body,(p,modal)=>({commands:selected.map(e=>{
+ return form(ctx,titles[action],'BATCH',body,(p,modal)=>({commands:selected.filter(e=>!modal.toolRemovedKeys?.has(e.key)).map(e=>{
   const quantity=e.kit?undefined:Number(modal.querySelector(`[data-batch-quantity="${e.key}"]`).value),base={...p,...(e.kit?{kitId:e.id}:{assetId:e.id,quantity})}
   if(action==='borrow')return {type:'BORROW',payload:base}
   if(action==='transfer'){const target=m.warehouses.find(w=>w.id!==e.warehouseId);if(!target)throw Error('缺少调入工具库');return {type:'TRANSFER',payload:{...base,toWarehouseId:target.id}}}
@@ -197,7 +229,12 @@ function returnBatch(ctx,selected,d){
  const {form,input,table}=d,m=ctx.state.toolManagement,ids=new Set(selected.filter(e=>e.asset).map(e=>e.id)),kits=new Set(selected.filter(e=>e.kit).map(e=>e.id))
  const lines=m.loans.flatMap(loan=>loan.status==='OPEN'?loan.lines.filter(line=>(kits.has(loan.kitId)||ids.has(line.assetId))&&returnableQuantity(m,loan,line)>0).map(line=>({loan,line,n:returnableQuantity(m,loan,line)})):[])
  if(!lines.length)throw Error('所选工具没有可归还数量')
- return form(ctx,'归还所选工具','BATCH',`<div class="tool-wide">${table(['借用单','领用人','工具 / 编号','可归还','本次归还'],lines.map(({loan,line,n},i)=>{const a=m.assets.find(a=>a.id===line.assetId);return [loan.id,esc(loan.borrower),esc(name(ctx.state.tools,a.toolId))+' · '+esc(a.code),n,`<input class="input" type="number" min="0" max="${n}" step="1" value="${n}" required data-return-line="${i}" aria-label="${esc(a.code)}归还数量">`]}))}</div>`+input('returner','归还人'),(p,modal)=>({commands:lines.flatMap(({loan,line},i)=>{const value=modal.querySelector(`[data-return-line="${i}"]`).value;if(value==='')throw Error('请填写归还数量');const n=Number(value);if(!Number.isSafeInteger(n)||n<0)throw Error('归还数量必须为非负整数');return n?[{type:'RETURN',payload:{loanId:loan.id,assetId:line.assetId,quantity:n,returner:p.returner}}]:[]})}))
+ const single=lines.length===1
+ const modal=form(ctx,'归还所选工具','BATCH',`<p class="tool-wide pc-help">勾选本次实际归还的借用单，再核对数量；未勾选的借用单保持原状。</p><label class="tool-wide"><input type="checkbox" data-return-all ${single?'checked':''}> 全选本次归还</label><p class="tool-wide tool-batch-scope" data-return-summary role="status"></p><div class="tool-wide">${table(['本次办理','借用单','领用人','工具 / 编号','可归还','本次归还'],lines.map(({loan,line,n},i)=>{const a=m.assets.find(a=>a.id===line.assetId);return [`<input type="checkbox" data-return-pick="${i}" aria-label="归还借用单${loan.id}的${esc(a.code)}" ${single?'checked':''}>`,loan.id,esc(loan.borrower),esc(name(ctx.state.tools,a.toolId))+' · '+esc(a.code),n,`<input class="input" type="number" min="1" max="${n}" step="1" value="${single?n:0}" required data-return-line="${i}" aria-label="${esc(a.code)}归还数量" aria-describedby="return-error-${i}" ${single?'data-return-initialized="true"':'disabled'}><span class="tool-quantity-error" role="alert" id="return-error-${i}" data-return-error="${i}"></span>`]}))}</div>`+input('returner','归还人'),(p,box)=>({commands:lines.flatMap(({loan,line},i)=>{if(!box.querySelector(`[data-return-pick="${i}"]`).checked)return [];const value=box.querySelector(`[data-return-line="${i}"]`).value;if(value==='')throw Error('请填写归还数量');const n=Number(value);if(!Number.isSafeInteger(n)||n<=0)throw Error('所选借用单的归还数量必须为正整数');return [{type:'RETURN',payload:{loanId:loan.id,assetId:line.assetId,quantity:n,returner:p.returner}}]})}))
+ const picks=[...modal.querySelectorAll('[data-return-pick]')],all=modal.querySelector('[data-return-all]')
+ const sync=()=>{let total=0,invalid=false;const chosen=lines.filter((r,i)=>{const quantity=modal.querySelector(`[data-return-line="${i}"]`),bad=picks[i].checked&&!quantity.checkValidity(),error=modal.querySelector(`[data-return-error="${i}"]`);bad?quantity.setAttribute('aria-invalid','true'):quantity.removeAttribute('aria-invalid');if(error)error.textContent=bad?`本次归还须填写 1 至 ${r.n} 的整数`:'';if(!picks[i].checked)return false;invalid||=bad;total+=Number(quantity.value)||0;return true}),loans=new Set(chosen.map(r=>r.loan.id)),confirm=modal.querySelector('[data-modal-confirm]');modal.querySelector('[data-return-summary]').textContent=`本次归还 ${loans.size} 单 · ${chosen.length} 项 · 合计 ${total} 件；${invalid?'请修正标红的归还数量。':'其余借用记录保持不变。'}`;confirm.textContent=`确认归还（${total}件）`;modal.confirmBlocked=!chosen.length||invalid||total<=0;confirm.disabled=modal.confirmBlocked;all.checked=picks.every(el=>el.checked);all.indeterminate=picks.some(el=>el.checked)&&!all.checked}
+ const pick=(el,checked)=>{el.checked=checked;const i=Number(el.dataset.returnPick),quantity=modal.querySelector(`[data-return-line="${i}"]`);quantity.disabled=!checked;if(checked&&!quantity.dataset.returnInitialized){quantity.value=lines[i].n;quantity.dataset.returnInitialized='true'}}
+ picks.forEach(el=>el.addEventListener('change',()=>{pick(el,el.checked);sync()}));all.addEventListener('change',()=>{picks.forEach(el=>pick(el,all.checked));sync()});modal.querySelectorAll('[data-return-line]').forEach(el=>el.addEventListener('input',()=>{el.dataset.returnInitialized='true';sync()}));sync();return modal
 }
 function finishBatch(ctx,v,action,selected,d){
  const {form,input,choice,table}=d,m=ctx.state.toolManagement,ids=new Set(selected.flatMap(e=>e.asset?[e.id]:e.kit.lines.map(l=>l.assetId)))
@@ -205,9 +242,9 @@ function finishBatch(ctx,v,action,selected,d){
  if(!rows.length)throw Error('所选工具没有对应的待办理记录')
  const review=action==='disposal-review'
  const source=r=>[r.countId&&`盘点 #${r.countId}`,r.loanId&&`借用单 #${r.loanId}`,r.serviceId&&`检修单 #${r.serviceId}`].filter(Boolean).join(' · ')||'在库工具申请'
- let body=`<p class="tool-wide tool-batch-scope" data-tool-batch-scope role="status"></p><div class="tool-wide">${table(review?['选择办理','申请单 / 工具编号','申请人 / 时间','类型 / 数量','原因 / 来源','账面 → 仅本单批准后']:['选择办理','单号','工具编号','数量','业务信息'],rows.map(r=>{const a=m.assets.find(a=>a.id===r.assetId);return review?[`<input type="checkbox" data-finish-id="${r.id}" checked aria-label="办理单据${r.id}">`,`#${r.id} · ${esc(a.code)}`,`${esc(r.actor)}<br>${esc(r.at.replace('T',' ').slice(0,16))}`,`${r.kind==='LOST'?'遗失':'报废'} · ${r.quantity} 件`,`${esc(r.reason)}<br><small>${esc(source(r))}</small>`,`${a.quantity} → ${a.quantity-r.quantity} 件`]:[`<input type="checkbox" data-finish-id="${r.id}" checked aria-label="办理单据${r.id}">`,r.id,esc(a.code),r.quantity,esc(r.provider||r.reason||name(m.warehouses,r.toWarehouseId))]}))}</div>`
+ let body=`<p class="tool-wide tool-batch-scope" data-tool-batch-scope role="status"></p><div class="tool-wide">${table(review?['选择办理','申请单 / 工具编号','申请人 / 时间','类型 / 数量','原因 / 来源','账面 → 仅本单批准后']:['选择办理','单号','工具编号','数量','业务信息'],rows.map(r=>{const a=m.assets.find(a=>a.id===r.assetId);return review?[`<input type="checkbox" data-finish-id="${r.id}" checked aria-label="办理单据${r.id}">`,`#${r.id} · ${esc(a.code)}`,`${esc(r.actor)}<br>${esc(toolDateTime(r.at))}`,`${r.kind==='LOST'?'遗失':'报废'} · ${r.quantity} 件`,`${esc(r.reason)}<br><small>${esc(source(r))}</small>`,`${a.quantity} → ${a.quantity-r.quantity} 件`]:[`<input type="checkbox" data-finish-id="${r.id}" checked aria-label="办理单据${r.id}">`,r.id,esc(a.code),r.quantity,esc(r.provider||r.reason||name(m.warehouses,r.toWarehouseId))]}))}</div>`
  if(review)body+='<p class="tool-wide pc-help">仅审核勾选的申请。批准后扣减对应数量；驳回不扣账，检修不合格件仍保持停用。申请人不能审核自己的申请。</p>'
- if(action==='service-finish')body+=choice('result','检定 / 维修结果',[['','请选择校验结果'],['PASS','合格回库'],['FAIL','不合格转报废审核']],'')+input('certificate','检定证书 / 维修结论')
+ if(action==='service-finish')body+='<p class="tool-wide pc-help">以下结果与证书/结论会应用到所有勾选单据；结果或证书不同的工具请分批登记。</p>'+choice('result','检定 / 维修结果',[['','请选择校验结果'],['PASS','合格回库'],['FAIL','不合格转报废审核']],'')+input('certificate','检定证书 / 维修结论')
  if(action==='transfer-finish')body+=choice('decision','处理结果',[['RECEIVED','接收入库'],['CANCELLED','取消调拨']],'RECEIVED')
  if(action==='disposal-review')body+=choice('decision','审核结果',[['APPROVED','批准'],['REJECTED','驳回']],'APPROVED')+input('opinion','审核意见')
  const modal=form(ctx,action==='service-finish'?'登记检修结果':action==='transfer-finish'?'接收调拨':'审核申请','BATCH',body,(p,modal)=>({commands:[...modal.querySelectorAll('[data-finish-id]:checked')].map(el=>({type:action==='service-finish'?'SERVICE_FINISH':action==='transfer-finish'?'TRANSFER_FINISH':'DISPOSAL_REVIEW',payload:{...p,id:Number(el.dataset.finishId)}}))}))
@@ -225,7 +262,7 @@ export function openBasicTable(ctx,v,d,kind,container=null){
  const body=`<nav class="tool-detail-tabs" aria-label="工具资料分类">${[['tools','工具字典'],['categories','工具分类'],['kits','工具套装'],['devices','智能设施']].map(([key,title])=>`<button type="button" data-base-tab="${key}" aria-pressed="${key===kind}" class="${key===kind?'active':''}">${title}</button>`).join('')}</nav><p>工具库：${m.warehouses.map(w=>esc(w.name)).join('、')}。</p><div data-base-table></div><div class="tool-bottom-buttons">${btn('add','新增',false,true)}${btn('edit','修改',true)}${btn('delete','删除',true)}${btn('bind','工序绑定',true)}${btn('event','设施联调',true)}</div><p class="pc-help" data-base-selection-hint>选择一条资料后可修改或删除；新增不需要选择。</p><p class="pc-help" data-base-device-help>模拟事件办理库存业务，但不会将设施标记为在线。真实设备接口：POST /api/tools/device-events；门禁通行只记录已发生事件，不远程开锁。</p>`
  const modal=container||openModal({title:'工具资料',wide:true,confirmText:'关闭',body});if(container)modal.innerHTML=body
  const syncSelection=()=>{const radio=modal.querySelector('[name="base-record"]:checked'),id=radio?Number(radio.value):null;selectedId=id;v.dataSelected=id;for(const [key,enabled] of [['edit',!!id],['delete',!!id],['bind',kind==='tools'&&!!id],['event',kind==='devices'&&!!id]]){const button=modal.querySelector(`[data-base-action="${key}"]`);if(button)button.disabled=!enabled}const hint=modal.querySelector('[data-base-selection-hint]');if(hint)hint.textContent=id?`已选择：${config[kind].rows.find(row=>row.id===id)?.name||'资料记录'}`:'选择一条资料后可修改或删除；新增不需要选择。'}
- const show=()=>{v.dataKind=kind;const c=config[kind],device=kind==='devices';modal.querySelector('[data-base-table]').innerHTML=d.table(device?['选择','编码','名称','类型 / 工具库','连接 / 最近通信']:kind==='kits'?['选择','编号','名称','套装组成','工具库']:kind==='categories'?['选择','编码','名称','说明','备注']:['选择','编码','名称','规格 / 状态','低储阈值'],c.rows.map(r=>[`<input type="radio" name="base-record" value="${r.id}" aria-label="选择${esc(r.name)}">`,esc(r.code),esc(r.name),device?esc(`${r.kind==='CABINET'?'智能工具柜':'无人工具室'} · ${name(m.warehouses,r.warehouseId)}`):kind==='kits'?esc(r.lines.map(l=>`${m.assets.find(a=>a.id===l.assetId)?.code||'—'} × ${l.quantity}`).join('；')):esc([r.specification,({AVAILABLE:'可用',MAINTENANCE:'检修中',DISABLED:'停用'})[r.status]].filter(Boolean).join(' · ')),device?esc(`${!r.enabled?'停用':r.lastSeenAt&&Date.now()-new Date(r.lastSeenAt)<120000?'在线':'未连接 / 离线'} · ${r.lastSeenAt?String(r.lastSeenAt).replace('T',' ').slice(0,16):'未通信'}`):kind==='kits'?esc(name(m.warehouses,m.assets.find(a=>a.id===r.lines[0]?.assetId)?.warehouseId)):esc(r.lowStock==null?'—':`全库 ${r.lowStock} 件${Object.entries(r.warehouseLowStock||{}).map(([id,n])=>`；${name(m.warehouses,Number(id))} ${n} 件`).join('')}`)]));modal.querySelector('[data-base-action="event"]').hidden=!device;modal.querySelector('[data-base-action="bind"]').hidden=kind!=='tools';modal.querySelector('[data-base-device-help]').hidden=!device;modal.querySelectorAll('[data-base-tab]').forEach(b=>{b.classList.toggle('active',b.dataset.baseTab===kind);b.setAttribute('aria-pressed',String(b.dataset.baseTab===kind))});modal.querySelectorAll('[name="base-record"]').forEach(r=>r.addEventListener('change',syncSelection));syncSelection()}
+ const show=()=>{v.dataKind=kind;const c=config[kind],device=kind==='devices';modal.querySelector('[data-base-table]').innerHTML=d.table(device?['选择','编码','名称','类型 / 工具库','连接 / 最近通信']:kind==='kits'?['选择','编号','名称','套装组成','工具库']:kind==='categories'?['选择','编码','名称','说明','备注']:['选择','编码','名称','规格 / 状态','低储阈值'],c.rows.map(r=>[`<input type="radio" name="base-record" value="${r.id}" aria-label="选择${esc(r.name)}">`,esc(r.code),esc(r.name),device?esc(`${r.kind==='CABINET'?'智能工具柜':'无人工具室'} · ${name(m.warehouses,r.warehouseId)}`):kind==='kits'?esc(r.lines.map(l=>`${m.assets.find(a=>a.id===l.assetId)?.code||'—'} × ${l.quantity}`).join('；')):esc([r.specification,({AVAILABLE:'可用',MAINTENANCE:'检修中',DISABLED:'停用'})[r.status]].filter(Boolean).join(' · ')),device?esc(`${!r.enabled?'停用':r.lastSeenAt&&Date.now()-new Date(r.lastSeenAt)<120000?'在线':'未连接 / 离线'} · ${r.lastSeenAt?toolDateTime(r.lastSeenAt):'未通信'}`):kind==='kits'?esc(name(m.warehouses,m.assets.find(a=>a.id===r.lines[0]?.assetId)?.warehouseId)):esc(r.lowStock==null?'—':`全库 ${r.lowStock} 件${Object.entries(r.warehouseLowStock||{}).map(([id,n])=>`；${name(m.warehouses,Number(id))} ${n} 件`).join('')}`)]));modal.querySelector('[data-base-action="event"]').hidden=!device;modal.querySelector('[data-base-action="bind"]').hidden=kind!=='tools';modal.querySelector('[data-base-device-help]').hidden=!device;modal.querySelectorAll('[data-base-tab]').forEach(b=>{b.classList.toggle('active',b.dataset.baseTab===kind);b.setAttribute('aria-pressed',String(b.dataset.baseTab===kind))});modal.querySelectorAll('[name="base-record"]').forEach(r=>r.addEventListener('change',syncSelection));syncSelection()}
  modal.querySelectorAll('[data-base-tab]').forEach(b=>b.addEventListener('click',()=>{kind=b.dataset.baseTab;v.dataSelected=null;selectedId=null;show()}))
  const restoreId=selectedId;show();selectedId=restoreId;if(restoreId){const selected=modal.querySelector(`[name="base-record"][value="${restoreId}"]`);if(selected)selected.checked=true}syncSelection()
  modal.querySelectorAll('[data-base-action]').forEach(b=>b.addEventListener('click',()=>{
@@ -240,7 +277,7 @@ export function openBasicTable(ctx,v,d,kind,container=null){
  }))
 }
 export function downloadCsv(filename,rows){
- const cell=v=>{let value=String(v??'');if(/^[=+\-@\t\r]/.test(value))value="'"+value;return '"'+value.replaceAll('"','""')+'"'}
+ const cell=v=>{let value=String(v??'');if(!(typeof v==='number'&&Number.isFinite(v))&&/^[=+\-@\t\r]/.test(value))value="'"+value;return '"'+value.replaceAll('"','""')+'"'}
  const url=URL.createObjectURL(new Blob(['\uFEFF'+rows.map(row=>row.map(cell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)
 }
 
