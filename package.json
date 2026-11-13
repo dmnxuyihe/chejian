@@ -16,6 +16,7 @@
     "test:planning": "node tests/planning_calendar.mjs",
     "test:monthly-tools": "node tests/planning_import.mjs && node tests/monthly_plan_workflow.mjs && node tests/monthly_plan_selection_workflow.mjs && node tests/monthly_plan_unified_changes.mjs && node tests/monthly_plan_partial_publish_request.mjs && node tests/monthly_verification_publication.mjs && node tests/planning_page_ui.mjs && node tests/monthly_tools_latest_merge.mjs",
     "test:monthly-schedule-approval": "node tests/monthly_plan_workflow.mjs && node tests/monthly_plan_selection_workflow.mjs && node tests/monthly_plan_partial_publish_request.mjs",
+    "test:monthly-logs": "node tests/monthly_plan_status_logs.mjs && node tests/monthly_plan_status_log_ui.mjs",
     "test:workshop-calendar": "node tests/workshop_calendar.mjs",
     "db:seed-workshop-calendar": "node scripts/seed-workshop-calendar.mjs",
     "test:planning-import": "node tests/planning_import.mjs",

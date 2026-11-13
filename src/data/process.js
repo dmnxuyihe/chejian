@@ -1,9 +1,23 @@
 export const repairPrograms = [
-  { id: 1, modelId: 1, code: 'HXD1C-HIGH', name: 'HXD1C高级修', status: 'ENABLED' },
+  { id: 1, modelId: 1, code: 'HXD1C-HIGH', name: 'HXD1C高级修', durationDays: 18, status: 'ENABLED' },
+  ...[
+    [1, 'HXD1C'], [2, 'HXD1'], [3, 'HXD1D'], [4, 'HXD3C'], [5, 'FXD3-J'],
+  ].flatMap(([modelId, modelCode], modelIndex) => ['C1', 'C2', 'C3', 'C4', 'C5'].map((name, index) => ({
+    id: 1001 + modelIndex * 5 + index,
+    modelId,
+    code: `${modelCode}-${name}`,
+    name,
+    durationDays: name === 'C5' && modelCode === 'FXD3-J' ? 15 : 18,
+    status: 'ENABLED',
+  }))),
 ]
 
 export const locomotiveModels = [
+  { id: 2, code: 'HXD1', name: 'HXD1', status: 'ENABLED' },
   { id: 1, code: 'HXD1C', name: 'HXD1C', status: 'ENABLED' },
+  { id: 3, code: 'HXD1D', name: 'HXD1D', status: 'ENABLED' },
+  { id: 4, code: 'HXD3C', name: 'HXD3C', status: 'ENABLED' },
+  { id: 5, code: 'FXD3-J', name: 'FXD3-J', status: 'ENABLED' },
 ]
 
 export const tasks = [

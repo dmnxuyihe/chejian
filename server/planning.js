@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto'
 import { planFields, planHeaders, parsePlanUpload, templateCsv, makeTemplateXlsx, safeCsvCell } from './planning-import.js'
 
 const ttl = 15 * 60 * 1000
-const terminal = new Set(['COMPLETED', 'FINISHED', 'CANCELLED', 'CANCELED', 'CLOSED'])
+const allowedImportModels = new Set(['HXD1', 'HXD1C', 'HXD1D', 'HXD3C', 'FXD3-J'])
+const allowedImportPrograms = new Set(['C1', 'C2', 'C3', 'C4', 'C5'])
 const normalizeText = value => String(value ?? '').trim().normalize('NFC')
 const dateOnly = value => value == null ? null : String(value).slice(0, 10)
 const httpError = (status, message) => Object.assign(new Error(message), { status })
@@ -77,23 +78,36 @@ function normalizeRows(matrix, importType, period, dictionaries) {
     if (!data.locomotiveNo) addError(row, '机车编号', '机车编号不能为空')
     else if (data.locomotiveNo.length > 64) addError(row, '机车编号', '机车编号不能超过64个字符')
     if (!data.modelName) addError(row, '机型', '机型不能为空')
+    else if (!allowedImportModels.has(data.modelName)) addError(row, '机型', '机型只能填写HXD1、HXD1C、HXD1D、HXD3C、FXD3-J')
     else if (data.modelName.length > 64) addError(row, '机型', '机型不能超过64个字符')
     if (!data.repairProgramName) addError(row, '修程', '修程不能为空')
+    else if (!allowedImportPrograms.has(data.repairProgramName)) addError(row, '修程', '修程只能填写C1、C2、C3、C4、C5')
     else if (data.repairProgramName.length > 64) addError(row, '修程', '修程不能超过64个字符')
-    const model = dictionaries.modelByName.get(data.modelName)
-    if (data.modelName && !model) addError(row, '机型', '机型不在有效字典中')
-    const program = model && dictionaries.programByModelAndName.get(`${model.model_id}\0${data.repairProgramName}`)
-    if (data.repairProgramName && model && !program) addError(row, '修程', '修程与机型不匹配或不在有效字典中')
+    const model = allowedImportModels.has(data.modelName) ? dictionaries.modelByName.get(data.modelName) : null
+    if (data.modelName && allowedImportModels.has(data.modelName) && !model) addError(row, '机型', '机型当前未在系统字典中启用')
+    const program = model && allowedImportPrograms.has(data.repairProgramName) ? dictionaries.programByModelAndName.get(`${model.model_id}\0${data.repairProgramName}`) : null
+    if (data.repairProgramName && allowedImportPrograms.has(data.repairProgramName) && model && !program) addError(row, '修程', '修程与机型不匹配或当前未启用')
     if (program) data.repairProgramId = Number(program.repair_program_id)
     if (!data.plannedEntryAt) addError(row, '计划入段日期', parsedEntryDate.error)
     else if (importType === 'ANNUAL' && !data.plannedEntryAt.startsWith(`${period.year}-`)) addError(row, '计划入段日期', `日期不属于${period.year}年`)
     const sequence = get('repairSequence')
-    if (normalizeText(sequence) !== '') {
+    if (normalizeText(sequence) === '') {
+      addError(row, '修次', '修次不能为空')
+    } else {
       const value = typeof sequence === 'number' && Number.isInteger(sequence) ? sequence : /^\d+$/.test(normalizeText(sequence)) ? Number(sequence) : NaN
       if (!Number.isSafeInteger(value) || value < 1) addError(row, '修次', '修次必须是正整数')
       else data.repairSequence = value
     }
-    for (const key of ['ownerBureau', 'ownerDepot', 'remark']) {
+    if (!data.ownerBureau) addError(row, '配属局', '配属局不能为空')
+    else if (!dictionaries.ownerBureaus.includes(data.ownerBureau)) addError(row, '配属局', '配属局不在系统可选范围内')
+    if (!data.ownerDepot) addError(row, '配属段', '配属段不能为空')
+    else if (!dictionaries.ownerDepots.includes(data.ownerDepot)) addError(row, '配属段', '配属段不在系统可选范围内')
+    else if (!(dictionaries.officialDepotsByBureau[data.ownerBureau] || []).includes(data.ownerDepot)) addError(row, '配属段', `配属段不属于${data.ownerBureau || '所选配属局'}`)
+    const remarkField = planFields.find((item) => item.key === 'remark')
+    if (remarkField?.max && data.remark.length > remarkField.max) {
+      addError(row, remarkField.label, `${remarkField.label}不能超过${remarkField.max}个字符`)
+    }
+    for (const key of ['ownerBureau', 'ownerDepot']) {
       const field = planFields.find(item => item.key === key)
       if (data[key].length > field.max) addError(row, field.label, `不能超过${field.max}个字符`)
     }
@@ -128,6 +142,19 @@ function comparisonData(data) {
 }
 
 function markFileDuplicates(rows) {
+  const vehicleGroups = new Map()
+  for (const row of rows) {
+    const locomotiveNo = row.data.locomotiveNo?.toLocaleUpperCase('en-US')
+    if (!locomotiveNo) continue
+    vehicleGroups.set(locomotiveNo, [...(vehicleGroups.get(locomotiveNo) || []), row])
+  }
+  for (const group of vehicleGroups.values()) {
+    if (group.length < 2) continue
+    for (const row of group) {
+      addError(row, '机车编号', '文件内机车编号重复；同一导入文件中每个机车编号只能出现一次')
+      row.status = 'duplicate'
+    }
+  }
   const groups = new Map()
   for (const row of rows) {
     const key = naturalKey(row)
@@ -137,9 +164,7 @@ function markFileDuplicates(rows) {
   for (const group of groups.values()) {
     if (group.length < 2) continue
     const contents = new Set(group.map(row => comparisonData(row.data)))
-    if (contents.size === 1) {
-      for (const row of group.slice(1)) { addError(row, '整行', '与文件内首条记录完全重复，保留首条'); row.status = 'duplicate' }
-    } else {
+    if (contents.size !== 1) {
       for (const row of group) { addError(row, '整行', '相同检修识别信息的内容冲突；请修正后重新上传'); row.status = 'conflict' }
     }
   }
@@ -172,7 +197,8 @@ function publicPreview(preview) {
 
 async function dictionaries(pool, schema) {
   const result = await pool.query(
-    `SELECT lm.model_id, lm.model_name, rp.repair_program_id, rp.repair_program_name
+    `SELECT lm.model_id, lm.model_name, rp.repair_program_id, rp.repair_program_name,
+            COALESCE(rp.repair_duration_days, 18) AS repair_duration_days
        FROM "${schema}".locomotive_model lm
        LEFT JOIN "${schema}".repair_program rp ON rp.model_id=lm.model_id AND rp.status='ENABLED'
       WHERE lm.status='ENABLED' ORDER BY lm.model_name, rp.repair_program_name`)
@@ -182,14 +208,59 @@ async function dictionaries(pool, schema) {
     modelByName.set(row.model_name, row)
     if (row.repair_program_id != null) programByModelAndName.set(`${row.model_id}\0${row.repair_program_name}`, row)
   }
-  return result.rows.map(row => ({ modelId: Number(row.model_id), modelName: row.model_name, repairProgramId: row.repair_program_id == null ? null : Number(row.repair_program_id), repairProgramName: row.repair_program_name })).reduce((out, row) => {
+  const places = await pool.query(`
+    SELECT DISTINCT owner_bureau AS value FROM "${schema}".vehicle_repair
+     WHERE owner_bureau IS NOT NULL AND btrim(owner_bureau) <> ''
+    UNION
+    SELECT DISTINCT owner_bureau AS value FROM "${schema}".monthly_plan_item
+     WHERE owner_bureau IS NOT NULL AND btrim(owner_bureau) <> ''
+    ORDER BY value`)
+  const depots = await pool.query(`
+    SELECT DISTINCT owner_depot AS value FROM "${schema}".vehicle_repair
+     WHERE owner_depot IS NOT NULL AND btrim(owner_depot) <> ''
+    UNION
+    SELECT DISTINCT owner_depot AS value FROM "${schema}".monthly_plan_item
+     WHERE owner_depot IS NOT NULL AND btrim(owner_depot) <> ''
+    ORDER BY value`)
+  const railwayPlaces = await pool.query(`
+    SELECT bureau_name, depot_name
+      FROM "${schema}".railway_depot_dictionary
+     WHERE status='ENABLED'
+     ORDER BY bureau_name, depot_name`)
+  const legacyPlaces = await pool.query(`
+    SELECT DISTINCT owner_bureau AS bureau_name, owner_depot AS depot_name
+      FROM "${schema}".vehicle_repair
+     WHERE owner_bureau IS NOT NULL AND btrim(owner_bureau) <> ''
+       AND owner_depot IS NOT NULL AND btrim(owner_depot) <> ''
+    UNION
+    SELECT DISTINCT owner_bureau AS bureau_name, owner_depot AS depot_name
+      FROM "${schema}".monthly_plan_item
+     WHERE owner_bureau IS NOT NULL AND btrim(owner_bureau) <> ''
+       AND owner_depot IS NOT NULL AND btrim(owner_depot) <> ''
+    ORDER BY bureau_name, depot_name`)
+  const depotOptions = new Map()
+  const officialDepotOptions = new Map()
+  for (const row of railwayPlaces.rows) {
+    if (!depotOptions.has(row.bureau_name)) depotOptions.set(row.bureau_name, [])
+    depotOptions.get(row.bureau_name).push(row.depot_name)
+    if (!officialDepotOptions.has(row.bureau_name)) officialDepotOptions.set(row.bureau_name, [])
+    officialDepotOptions.get(row.bureau_name).push(row.depot_name)
+  }
+  for (const row of legacyPlaces.rows) {
+    if (!depotOptions.has(row.bureau_name)) depotOptions.set(row.bureau_name, [])
+    if (!depotOptions.get(row.bureau_name).includes(row.depot_name)) depotOptions.get(row.bureau_name).push(row.depot_name)
+  }
+  const officialBureaus = new Set(railwayPlaces.rows.map(row => row.bureau_name))
+  const ownerBureaus = [...officialBureaus]
+  const ownerDepots = [...new Set(railwayPlaces.rows.map(row => row.depot_name))].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+  return result.rows.map(row => ({ modelId: Number(row.model_id), modelName: row.model_name, repairProgramId: row.repair_program_id == null ? null : Number(row.repair_program_id), repairProgramName: row.repair_program_name, durationDays: Number(row.repair_duration_days) || 18 })).reduce((out, row) => {
     out.models.set(row.modelId, { id: row.modelId, name: row.modelName })
     if (row.repairProgramId != null) {
-      out.programs.set(row.repairProgramId, { id: row.repairProgramId, name: row.repairProgramName, modelId: row.modelId })
+      out.programs.set(row.repairProgramId, { id: row.repairProgramId, name: row.repairProgramName, modelId: row.modelId, durationDays: row.durationDays })
       out.programByModelAndName.set(`${row.modelId}\0${row.repairProgramName}`, { repair_program_id: row.repairProgramId })
     }
     return out
-  }, { modelByName, programByModelAndName, models: new Map(), programs: new Map() })
+  }, { modelByName, programByModelAndName, models: new Map(), programs: new Map(), ownerBureaus, ownerDepots, ownerDepotsByBureau: Object.fromEntries([...depotOptions.entries()]), officialDepotsByBureau: Object.fromEntries([...officialDepotOptions.entries()]) })
 }
 
 async function applyDatabaseConflicts(client, schema, rows) {
@@ -197,18 +268,15 @@ async function applyDatabaseConflicts(client, schema, rows) {
   if (!candidates.length) return []
   const locomotiveNos = [...new Set(candidates.map(row => row.data.locomotiveNo.toLocaleUpperCase('en-US')))]
   const result = await client.query(
-    `SELECT locomotive_no, repair_program_id, planned_entry_at, status
+    `SELECT locomotive_no
        FROM "${schema}".vehicle_repair WHERE upper(locomotive_no) = ANY($1::text[])`, [locomotiveNos])
   const existing = result.rows
   const fresh = []
   for (const row of candidates) {
-    const same = existing.filter(record => record.locomotive_no.toLocaleUpperCase('en-US') === row.data.locomotiveNo.toLocaleUpperCase('en-US') && Number(record.repair_program_id) === row.data.repairProgramId)
-    if (same.some(record => dateOnly(record.planned_entry_at) === row.data.plannedEntryAt)) {
-      addError(row, '计划入段日期', '数据库已存在相同机车、修程和入段日期的检修计划；本版只新增、不覆盖')
+    const same = existing.filter(record => record.locomotive_no.toLocaleUpperCase('en-US') === row.data.locomotiveNo.toLocaleUpperCase('en-US'))
+    if (same.length) {
+      addError(row, '机车编号', `数据库已存在机车编号${row.data.locomotiveNo}；机车编号必须全库唯一，不能重复导入`)
       row.status = 'error'; fresh.push(row)
-    } else if (same.some(record => !terminal.has(String(record.status).toUpperCase()))) {
-      addError(row, '计划入段日期', '同车同修程存在未完成计划，日期不同；请先核对计划调整')
-      row.status = 'conflict'; fresh.push(row)
     }
   }
   return fresh
@@ -236,7 +304,13 @@ export function createPlanningService(database) {
   function applyMonthlyPeriodRule(entry,rows){
     if(entry.importType!=='MONTHLY'||entry.importMode!=='MONTHLY_IMPORT')return
     const target=entry.period.value
-    if(rows.some(row=>row.data.plannedEntryAt&&!row.data.plannedEntryAt.startsWith(`${target}-`)))for(const row of rows){addError(row,'计划入段日期',`指定月份导入只能包含${target}的数据；文件存在跨月记录，整批不能导入`);row.status='error'}
+    for(const row of rows){
+      const date=row.data.plannedEntryAt
+      if(date&&!date.startsWith(`${target}-`)){
+        addError(row,'计划入段日期',`计划入段日期必须属于${target}`)
+        row.status='error'
+      }
+    }
   }
 
   async function calendarRows({ from, to, modelId, programId, locomotiveNo, vehicleId, entryOnly = false, planSource, ownerDepot = '', repairSequence, status = '', approvalStatus = '' }) {
@@ -554,7 +628,7 @@ export function createPlanningService(database) {
   return {
     async lookups() {
       const dict = await dictionaries(pool, schema)
-      return { models: [...dict.models.values()], programs: [...dict.programs.values()] }
+      return { models: [...dict.models.values()], programs: [...dict.programs.values()], ownerBureaus: dict.ownerBureaus, ownerDepots: dict.ownerDepots, ownerDepotsByBureau: dict.ownerDepotsByBureau }
     },
     async annual({ year, depot = '', modelId, programId }) {
       const allRows = await annualRows({ year, modelId, programId })

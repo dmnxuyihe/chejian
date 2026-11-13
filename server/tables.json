@@ -837,6 +837,16 @@
         "description": "如高级修/C4/C5"
       },
       {
+        "name": "repair_duration_days",
+        "label": "修程工期（天）",
+        "type": "INT",
+        "nullable": false,
+        "key": "31",
+        "default": "18",
+        "reference": "31",
+        "description": "C5修程默认18天，FXD3-J为15天"
+      },
+      {
         "name": "status",
         "label": "状态",
         "type": "VARCHAR(16)",

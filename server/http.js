@@ -77,9 +77,13 @@ export function createHandler(database) {
           const role = req.headers['x-pc1-simulated-role'] || 'PLANNER'
           const year = url.searchParams.get('year'), month = url.searchParams.get('month')
           if (url.pathname === '/api/monthly-plans/todos' && req.method === 'GET') return json(res,200,await monthlyPlans.todos({role}))
+          if (url.pathname === '/api/monthly-plans/logs' && req.method === 'GET') return json(res,200,await monthlyPlans.logs({year,month,role,page:url.searchParams.get('page'),pageSize:url.searchParams.get('pageSize'),actionType:url.searchParams.get('actionType')}))
+          const monthlyLog=url.pathname.match(/^\/api\/monthly-plans\/logs\/(\d+)$/)
+          if(monthlyLog&&req.method==='GET')return json(res,200,await monthlyPlans.logs({year,month,role,logId:monthlyLog[1]}))
           if (url.pathname === '/api/monthly-plans/month' && req.method === 'GET') return json(res,200,await monthlyPlans.read({year,month,role}))
           if (url.pathname === '/api/monthly-plans/title' && req.method === 'PATCH') return json(res,200,await monthlyPlans.setTitle({...await body(req),role}))
           if (url.pathname === '/api/monthly-plans/submit' && req.method === 'POST') return json(res,200,await monthlyPlans.submit({...await body(req),role}))
+          if (url.pathname === '/api/monthly-plans/items' && req.method === 'POST') return json(res,200,await monthlyPlans.createDraftItem({...await body(req),role}))
           if (url.pathname === '/api/monthly-plans/request-publish' && req.method === 'POST') return json(res,200,await monthlyPlans.requestPublish({...await body(req),role}))
           if (url.pathname === '/api/monthly-plans/direct-publish' && req.method === 'POST') return json(res,200,await monthlyPlans.directPublish({...await body(req),role}))
           if (url.pathname === '/api/monthly-plans/withdraw' && req.method === 'POST') return json(res,200,await monthlyPlans.withdraw({...await body(req),role}))
@@ -218,8 +222,9 @@ export function createHandler(database) {
       res.writeHead(200, { 'Content-Type': mime[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
       res.end(req.method === 'HEAD' ? undefined : content)
     } catch (error) {
-      const status = error.status || (error.code?.startsWith('23') ? 400 : 503)
-      const message = error.status ? error.message : status === 400 ? '数据库约束校验失败，原数据未改变' : 'PostgreSQL暂不可用，数据未保存；请重试或联系服务端'
+      const isConstraintError = !error.status && /^23/.test(String(error.code || ''))
+const status = error.status || (isConstraintError ? 400 : 503)
+      const message = error.status ? error.message : isConstraintError ? '保存失败：原有正式数据未改变。若您正在修改已发布车辆，请检查修改后的必填信息、是否与本月其他车辆重复，或该车辆是否已有待审核变更。' : 'PostgreSQL暂不可用，数据未保存；请重试或联系服务端'
       if (!error.status) console.error('请求失败:', error.code || error.name)
       if (!res.headersSent) json(res, status, { message })
       else res.end()

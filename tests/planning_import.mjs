@@ -16,7 +16,7 @@ const buffers = (matrix, bookType = 'xlsx') => {
   return XLSX.write(book, { type: 'buffer', bookType })
 }
 const filePayload = (name, buffer, extra = {}) => ({ filename: name, contentBase64: buffer.toString('base64'), ...extra })
-const mkRow = (no, date, other = {}) => [no, other.model ?? 'HXD1C', other.program ?? 'HXD1C高级修', other.sequence ?? '', date, other.bureau ?? '', other.depot ?? '', other.mileage ?? '', other.remark ?? '']
+const mkRow = (no, date, other = {}) => [no, other.model ?? 'HXD1C', other.program ?? 'C1', other.sequence ?? '1', date, other.bureau ?? '哈尔滨局', other.depot ?? '哈尔滨机务段', other.mileage ?? '', other.remark ?? '']
 
 try {
   await db.init()
@@ -38,7 +38,7 @@ try {
   const lookup = await request('/api/planning/lookups')
   assert.equal(lookup.status, 200)
   assert.ok(lookup.body.models.some(row => row.name === 'HXD1C'))
-  assert.ok(lookup.body.programs.some(row => row.name === 'HXD1C高级修'))
+  assert.ok(lookup.body.programs.some(row => row.name === 'C1'))
 
   const xlsxTemplate = await request('/api/planning/import/template.xlsx')
   assert.equal(xlsxTemplate.status, 200)
@@ -64,7 +64,7 @@ try {
   const missingHeader = await request('/api/planning/import/preview', 'POST', filePayload('missing-header.csv', Buffer.from('\uFEFF机车编号,修程,计划入段日期\r\n'), { importType: 'ANNUAL', year: 2027 }))
   assert.equal(missingHeader.status, 400)
 
-  const preciseDateErrors = await request('/api/planning/import/preview', 'POST', filePayload('date-errors.csv', Buffer.from(`${templateCsv}TEST-DATE-NOT-EXIST,HXD1C,HXD1C高级修,,2026-02-30,,,,\r\nTEST-DATE-FORMAT,HXD1C,HXD1C高级修,,2026.02.28,,,,\r\nTEST-DATE-EMPTY,HXD1C,HXD1C高级修,,,,,,\r\n,NOT-A-MODEL,HXD1C高级修,,2026-02-30,,,,\r\n`), { importType: 'MONTHLY', importMode:'BATCH_IMPORT' }))
+  const preciseDateErrors = await request('/api/planning/import/preview', 'POST', filePayload('date-errors.csv', Buffer.from(`${templateCsv}TEST-DATE-NOT-EXIST,HXD1C,C1,1,2026-02-30,哈尔滨局,哈尔滨机务段,,\r\nTEST-DATE-FORMAT,HXD1C,C1,1,2026.02.28,哈尔滨局,哈尔滨机务段,,\r\nTEST-DATE-EMPTY,HXD1C,C1,1,,哈尔滨局,哈尔滨机务段,,\r\n,NOT-A-MODEL,C1,1,2026-02-30,哈尔滨局,哈尔滨机务段,,\r\n`), { importType: 'MONTHLY', importMode:'BATCH_IMPORT' }))
   assert.equal(preciseDateErrors.status, 200)
   assert.equal(preciseDateErrors.body.rows[0].errors.find(error => error.field === '计划入段日期')?.message, '日期不存在')
   assert.equal(preciseDateErrors.body.rows[1].errors.find(error => error.field === '计划入段日期')?.message, '日期格式不支持；请填写 YYYY-MM-DD 或 YYYY/MM/DD')
@@ -75,9 +75,25 @@ try {
   assert.ok(groupedErrorCsv.includes('机车编号') && groupedErrorCsv.includes('机型') && groupedErrorCsv.includes('计划入段日期'), 'each erroneous field must be exported separately')
   await request(`/api/planning/import/preview/${preciseDateErrors.body.id}`, 'DELETE')
 
+  const strictRules = await request('/api/planning/import/preview', 'POST', filePayload('strict-rules.csv', Buffer.from(`${templateCsv}${[
+    mkRow('STRICT-DUP-01', '2027-11-03', { program: 'C1' }),
+    mkRow('STRICT-DUP-01', '2027-11-04', { program: 'C2' }),
+    mkRow('STRICT-BAD-MODEL', '2027-11-05', { model: 'SS9', program: 'C1' }),
+    mkRow('STRICT-BAD-PROGRAM', '2027-11-06', { program: 'HXD1C高级修' }),
+    mkRow('STRICT-BAD-BUREAU', '2027-11-07', { bureau: '示例铁路局', depot: '哈尔滨机务段' }),
+    mkRow('STRICT-BAD-DEPOT', '2027-11-08', { bureau: '北京局', depot: '哈尔滨机务段' }),
+  ].map(row=>row.join(',')).join('\r\n')}\r\n`), { importType: 'MONTHLY', importMode: 'MONTHLY_IMPORT', month: '2027-11' }))
+  assert.deepEqual(strictRules.body.rows.slice(0,2).map(row=>row.status), ['duplicate','duplicate'], '同一文件的相同机车编号即使修程、日期不同也必须全部拒绝')
+  assert.ok(strictRules.body.rows[0].errors.some(error=>error.field==='机车编号'&&error.message.includes('编号重复')))
+  assert.ok(strictRules.body.rows[2].errors.some(error=>error.field==='机型'&&error.message.includes('只能填写HXD1')))
+  assert.ok(strictRules.body.rows[3].errors.some(error=>error.field==='修程'&&error.message.includes('只能填写C1')))
+  assert.ok(strictRules.body.rows[4].errors.some(error=>error.field==='配属局'&&error.message.includes('不在系统可选范围')))
+  assert.ok(strictRules.body.rows[5].errors.some(error=>error.field==='配属段'&&error.message.includes('不属于北京局')))
+  await request(`/api/planning/import/preview/${strictRules.body.id}`, 'DELETE')
+
   const annualBook = buffers([
     ['机车编号', '机型', '修程', '修次', '计划入段日期', '配属局', '配属段', '累计走行公里', '备注'],
-    mkRow('TEST-PLAN-0001', '2027-11-03', { sequence: '2', mileage: '12345.6', bureau: '测试局', depot: '测试段' }),
+    mkRow('TEST-PLAN-0001', '2027-11-03', { sequence: '2', mileage: '12345.6', bureau: '北京局', depot: '丰台机务段' }),
     mkRow('TEST-PLAN-0002', '2027/11/04', { mileage: '0' }),
   ])
   const previewResponse = await request('/api/planning/import/preview', 'POST', filePayload('annual.xlsx', annualBook, { importType: 'ANNUAL', year: 2027 }))
@@ -89,7 +105,7 @@ try {
   assert.equal((await db.read()).revision, before.revision, 'preview must not increment database revision')
   assert.equal((await db.pool.query(`SELECT count(*)::int AS n FROM "${schema}".vehicle_repair`)).rows[0].n, beforeVehicles, 'preview must not insert business rows')
 
-  const cancelledPreview = await request('/api/planning/import/preview', 'POST', filePayload('cancel.csv', Buffer.from(`${templateCsv}CANCEL-01,HXD1C,HXD1C高级修,,2027-11-08,,,,\r\n`), { importType: 'MONTHLY', month: '2027-11' }))
+  const cancelledPreview = await request('/api/planning/import/preview', 'POST', filePayload('cancel.csv', Buffer.from(`${templateCsv}${mkRow('CANCEL-01', '2027-11-08').join(',')}\r\n`), { importType: 'MONTHLY', month: '2027-11' }))
   assert.equal(cancelledPreview.body.importable, 1)
   assert.equal((await request(`/api/planning/import/preview/${cancelledPreview.body.id}`, 'DELETE')).status, 200)
   assert.equal((await request('/api/planning/import/confirm', 'POST', { previewId: cancelledPreview.body.id })).status, 404)
@@ -109,7 +125,7 @@ try {
   assert.deepEqual(importedRows.rows.map(row => row.planned_exit_at), [null, null])
   assert.deepEqual(importedRows.rows.map(row => row.plan_source), ['ANNUAL', 'ANNUAL'])
   assert.equal(Number(importedRows.rows[0].mileage_km), 12345.6)
-  assert.equal(importedRows.rows[0].owner_bureau, '测试局')
+  assert.equal(importedRows.rows[0].owner_bureau, '北京局')
   assert.equal(importedRows.rows[0].priority, 100)
   const reloadedState = (await db.read()).snapshot.data
   const importedPlan = reloadedState.vehicleRepairs.find(row => row.locomotiveNo === 'TEST-PLAN-0001')
@@ -125,13 +141,24 @@ try {
   assert.equal(detail.status, 200)
   assert.equal(detail.body.planSource, 'ANNUAL')
 
-  const duplicateSource = await request('/api/planning/import/preview', 'POST', filePayload('same-month.csv', Buffer.from(`${templateCsv}test-plan-0001,HXD1C,HXD1C高级修,,2027-11-03,,,,\r\n`), { importType: 'MONTHLY', month: '2027-11' }))
+  const duplicateSource = await request('/api/planning/import/preview', 'POST', filePayload('same-month.csv', Buffer.from(`${templateCsv}${mkRow('test-plan-0001', '2027-11-03').join(',')}\r\n`), { importType: 'MONTHLY', month: '2027-11' }))
   assert.equal(duplicateSource.body.rows[0].status, 'error', 'ANNUAL/MONTHLY source must not affect the database deduplication key')
   assert.ok(duplicateSource.body.rows[0].errors.some(error => error.message.includes('数据库已存在')))
   await request(`/api/planning/import/preview/${duplicateSource.body.id}`, 'DELETE')
-  const dateConflict = await request('/api/planning/import/preview', 'POST', filePayload('date-change.csv', Buffer.from(`${templateCsv}TEST-PLAN-0001,HXD1C,HXD1C高级修,,2027-11-05,,,,\r\n`), { importType: 'MONTHLY', month: '2027-11' }))
-  assert.equal(dateConflict.body.rows[0].status, 'conflict', 'a different date for the same unfinished repair must not be auto-added')
+  const dateConflict = await request('/api/planning/import/preview', 'POST', filePayload('date-change.csv', Buffer.from(`${templateCsv}${mkRow('TEST-PLAN-0001', '2027-11-05').join(',')}\r\n`), { importType: 'MONTHLY', month: '2027-11' }))
+  assert.equal(dateConflict.body.rows[0].status, 'error', '数据库已存在同编号时，即使日期不同也必须拒绝')
+  assert.ok(dateConflict.body.rows[0].errors.some(error => error.message.includes('全库唯一')))
   await request(`/api/planning/import/preview/${dateConflict.body.id}`, 'DELETE')
+  const differentProgramConflict = await request('/api/planning/import/preview', 'POST', filePayload('same-number-other-program.csv', Buffer.from(`${templateCsv}${mkRow('TEST-PLAN-0001', '2027-11-06', { program: 'C2' }).join(',')}\r\n`), { importType: 'MONTHLY', month: '2027-11' }))
+  assert.equal(differentProgramConflict.body.rows[0].status, 'error', '数据库中存在同号车辆时，即使修程不同也禁止重复导入')
+  assert.ok(differentProgramConflict.body.rows[0].errors.some(error=>error.field==='机车编号'))
+  await request(`/api/planning/import/preview/${differentProgramConflict.body.id}`, 'DELETE')
+
+  await db.pool.query(`INSERT INTO "${schema}".vehicle_repair(vehicle_repair_id,locomotive_no,repair_program_id,planned_entry_at,status,approval_status) VALUES ((SELECT COALESCE(MAX(vehicle_repair_id),0)+1 FROM "${schema}".vehicle_repair),$1,$2,$3,'COMPLETED','PUBLISHED')`, ['TEST-DB-COMPLETED-01', importedRows.rows[0].repair_program_id, '2026-01-01'])
+  const completedNumberConflict = await request('/api/planning/import/preview', 'POST', filePayload('completed-number.csv', Buffer.from(`${templateCsv}${mkRow('test-db-completed-01', '2027-11-07').join(',')}\r\n`), { importType: 'MONTHLY', month: '2027-11' }))
+  assert.equal(completedNumberConflict.body.rows[0].status, 'error', '数据库中的历史已完成记录也必须参与编号唯一性校验')
+  assert.ok(completedNumberConflict.body.rows[0].errors.some(error => error.message.includes('数据库已存在机车编号') && error.message.includes('全库唯一')))
+  await request(`/api/planning/import/preview/${completedNumberConflict.body.id}`, 'DELETE')
 
   const xlsBook = buffers([templateMatrix[0], mkRow('TEST-XLS-0001', '2027-11-12')], 'xls')
   const xlsPreview = await request('/api/planning/import/preview', 'POST', filePayload('valid.xls', xlsBook, { importType: 'MONTHLY', month: '2027-11' }))
@@ -139,9 +166,9 @@ try {
   assert.equal(xlsPreview.body.importable, 1)
   await request(`/api/planning/import/preview/${xlsPreview.body.id}`, 'DELETE')
 
-  const appendPreview = await request('/api/planning/import/preview', 'POST', filePayload('append.csv', Buffer.from(`${templateCsv}TEST-APPEND-01,HXD1C,HXD1C高级修,,2028-01-13,,,,\r\n`), { importType: 'MONTHLY', month: '2028-01' }))
+  const appendPreview = await request('/api/planning/import/preview', 'POST', filePayload('append.csv', Buffer.from(`${templateCsv}${mkRow('TEST-APPEND-01', '2028-01-13').join(',')}\r\n`), { importType: 'MONTHLY', month: '2028-01' }))
   assert.equal(appendPreview.status, 200)
-  const appended = await request(`/api/planning/import/preview/${appendPreview.body.id}/rows`, 'POST', filePayload('new-vehicle.csv', Buffer.from(`${templateCsv}TEST-APPEND-02,HXD1C,HXD1C高级修,,2028-01-14,,,,\r\n`)))
+  const appended = await request(`/api/planning/import/preview/${appendPreview.body.id}/rows`, 'POST', filePayload('new-vehicle.csv', Buffer.from(`${templateCsv}${mkRow('TEST-APPEND-02', '2028-01-14').join(',')}\r\n`)))
   assert.equal(appended.status, 200, JSON.stringify(appended.body))
   assert.equal(appended.body.id, appendPreview.body.id, '新建车辆必须追加到原预览批次')
   assert.deepEqual([appended.body.total, appended.body.importable, appended.body.rows.map(row => row.line)], [2, 2, [2, 3]])
@@ -166,10 +193,9 @@ try {
   const mixedPreview = await request('/api/planning/import/preview', 'POST', filePayload('mixed.xlsx', mixed, { importType: 'MONTHLY', importMode:'BATCH_IMPORT' }))
   assert.equal(mixedPreview.status, 200, JSON.stringify(mixedPreview.body))
   const statuses = mixedPreview.body.rows.map(row => row.status)
-  assert.equal(statuses[0], 'ready')
-  assert.equal(statuses[1], 'duplicate')
+  assert.deepEqual(statuses.slice(0, 2), ['duplicate', 'duplicate'])
   assert.deepEqual(statuses.slice(2, 4), ['conflict', 'conflict'])
-  assert.equal(mixedPreview.body.importable, 2, 'monthly imports may include valid dates from any month')
+  assert.equal(mixedPreview.body.importable, 1, '文件内重复机车编号必须全部拒绝；跨月批量导入仍保留唯一有效行')
   assert.ok(mixedPreview.body.rows[4].errors.some(error => error.field === '机车编号'))
   assert.ok(mixedPreview.body.rows[5].errors.some(error => error.field === '计划入段日期'))
   assert.ok(mixedPreview.body.rows[6].errors.some(error => error.field === '机型'))
@@ -184,14 +210,16 @@ try {
   assert.ok(!errorText.includes('原始数据'), 'error CSV must not contain complete source-row JSON')
   assert.ok(errorText.includes('累计走行公里') && errorText.includes('-1'), 'error CSV must include the field and original invalid value')
   await request(`/api/planning/import/preview/${mixedPreview.body.id}`, 'DELETE')
-  const crossMonthPreview=await request('/api/planning/import/preview','POST',filePayload('cross-month.csv',Buffer.from(`${templateCsv}TEST-IN-MONTH,HXD1C,HXD1C高级修,,2027-11-20,,,,\r\nTEST-OTHER-MONTH,HXD1C,HXD1C高级修,,2027-12-01,,,,\r\n`),{importType:'MONTHLY',importMode:'MONTHLY_IMPORT',month:'2027-11'}))
+  const crossMonthPreview=await request('/api/planning/import/preview','POST',filePayload('cross-month.csv',Buffer.from(`${templateCsv}TEST-IN-MONTH,HXD1C,C1,1,2027-11-20,哈尔滨局,哈尔滨机务段,,\r\nTEST-OTHER-MONTH,HXD1C,C1,1,2027-12-01,哈尔滨局,哈尔滨机务段,,\r\n`),{importType:'MONTHLY',importMode:'MONTHLY_IMPORT',month:'2027-11'}))
   assert.equal(crossMonthPreview.status,200)
-  assert.equal(crossMonthPreview.body.importable,0,'指定月份导入存在跨月记录时必须整批拒绝')
-  assert.ok(crossMonthPreview.body.rows.every(row=>row.errors.some(error=>error.message.includes('整批不能导入'))))
+  assert.equal(crossMonthPreview.body.importable,1,'指定月份导入只拦截跨月行，不应误报同月合法行')
+  assert.equal(crossMonthPreview.body.errors,1)
+  assert.equal(crossMonthPreview.body.rows[0].status,'ready')
+  assert.ok(crossMonthPreview.body.rows[1].errors.some(error=>error.message.includes('必须属于2027-11')))
   await request(`/api/planning/import/preview/${crossMonthPreview.body.id}`,'DELETE')
   assert.equal(safeCsvCell('=SUM(1,1)'), "\"'=SUM(1,1)\"")
 
-  const formulaBook = buffers([templateMatrix[0], ['=1+1', 'HXD1C', 'HXD1C高级修', '', '2027-11-25', '', '', '', '']])
+  const formulaBook = buffers([templateMatrix[0], ['=1+1', 'HXD1C', 'C1', '1', '2027-11-25', '哈尔滨局', '哈尔滨机务段', '', '']])
   const formulaWorkbook = XLSX.read(formulaBook, { type: 'buffer' })
   const formulaSheet = formulaWorkbook.Sheets['导入数据']
   formulaSheet.A2 = { t: 'n', f: '1+1', v: 2 }

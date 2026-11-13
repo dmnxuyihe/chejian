@@ -41,7 +41,7 @@ try:
         calendar=context.new_page();calendar.on('pageerror',lambda error:errors.append(str(error)))
         calendar.goto(base+'/#/planning/g2-p2')
         calendar.locator('[data-calendar-month]').fill('2026-10');calendar.locator('[data-calendar-month]').dispatch_event('change')
-        calendar.locator('[data-open-vehicle="1"]').first.click()
+        calendar.locator('[data-plan-detail="1"]').first.click()
         expect(calendar.locator('.pc-plan-drawer')).to_contain_text('已排程')
         fixture=page.evaluate("()=>{const s=window.__APP_STATE__,task=s.schedules.find(r=>r.vehicleRepairId===1&&r.taskId===1001);return {id:task.id,person:s.employeeAssignments.find(r=>r.scheduleTaskId===task.id).employeeId}}")
         page.goto(base+'/#/worker/my-tasks')

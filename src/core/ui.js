@@ -47,11 +47,11 @@ export function openModal({ title, body, confirmText='确认', cancelText='取�
   const wrap = document.createElement('div')
   wrap.className = 'modal-backdrop'
   wrap.innerHTML = `
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="${titleId}" style="${wide ? 'width:min(780px,100%)' : ''}">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="${titleId}" style="${wide ? `width:min(${wide === 'extra' ? '1080px' : '780px'},calc(100vw - 44px))` : ''}">
       <div class="modal-head"><div class="modal-title-line"><span class="modal-title-icon">${contextIcon(title,22)}</span><h3 id="${titleId}">${escapeHtml(title)}</h3></div><button class="btn btn-icon btn-sm" data-modal-close aria-label="关闭对话框">${icon('close',16)}</button></div>
       <div class="modal-body">${body}</div>
       <div class="modal-actions">
-        <button class="btn" data-modal-close data-modal-cancel>${cancelText}</button>
+        ${cancelText == null ? '' : `<button class="btn" data-modal-close data-modal-cancel>${cancelText}</button>`}
         <button class="btn btn-primary" data-modal-confirm>${confirmText}</button>
       </div>
     </div>`

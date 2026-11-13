@@ -5,6 +5,7 @@ import { exportDemoSnapshot, parseDemoSnapshot } from '../src/core/demo-persiste
 import { databaseBusinessCollections, fromDatabaseStatus, stateTables, toDatabaseStatus } from './state-mapping.js'
 import { prepareMaintenanceRecord } from './maintenance.js'
 import { applyToolCommand } from '../src/core/tool-management.js'
+import { RAILWAY_DEPOT_OPTIONS } from './railway-dictionaries.js'
 
 // PostgreSQL's timestamp-without-time-zone values represent workshop local time.
 pg.types.setTypeParser(1082, value => value)
@@ -56,6 +57,56 @@ function buildTableRows(data, definitions) {
   }
   const appState = Object.fromEntries(Object.entries(data).filter(([key]) => !databaseBusinessCollections.has(key) && !localKeys.includes(key)))
   return { storedRows, payload: { appState, rowExtras } }
+}
+
+async function ensurePlanningDictionaries(client, schema) {
+  const quotedSchema = `"${schema}"`
+  const source = createState()
+  let changed = false
+  await client.query(`CREATE TABLE IF NOT EXISTS ${quotedSchema}.railway_depot_dictionary (
+    bureau_name VARCHAR(64) NOT NULL,
+    depot_name VARCHAR(128) NOT NULL,
+    status VARCHAR(16) NOT NULL DEFAULT 'ENABLED',
+    created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (bureau_name, depot_name)
+  )`)
+  for (const [bureau, depots] of RAILWAY_DEPOT_OPTIONS) {
+    for (const depot of depots) {
+      const result = await client.query(`INSERT INTO ${quotedSchema}.railway_depot_dictionary(bureau_name,depot_name) VALUES($1,$2) ON CONFLICT (bureau_name,depot_name) DO NOTHING`, [bureau, depot])
+      changed ||= result.rowCount > 0
+    }
+  }
+  const modelIds = new Map()
+  for (const model of source.locomotiveModels) {
+    const existing = (await client.query(`SELECT model_id FROM ${quotedSchema}.locomotive_model WHERE model_code=$1`, [model.code])).rows[0]
+    let modelId = existing?.model_id
+    if (modelId == null) {
+      const conflict = (await client.query(`SELECT model_id FROM ${quotedSchema}.locomotive_model WHERE model_id=$1`, [model.id])).rows[0]
+      modelId = conflict ? Number((await client.query(`SELECT COALESCE(MAX(model_id),0)+1 AS value FROM ${quotedSchema}.locomotive_model`)).rows[0].value) : model.id
+      await client.query(`INSERT INTO ${quotedSchema}.locomotive_model(model_id,model_code,model_name,status) VALUES($1,$2,$3,'ENABLED')`, [modelId, model.code, model.name])
+      changed = true
+    } else {
+      const result = await client.query(`UPDATE ${quotedSchema}.locomotive_model SET model_name=$2,status='ENABLED',updated_at=now() WHERE model_id=$1 AND (model_name<>$2 OR status<>'ENABLED')`, [modelId, model.name])
+      changed ||= result.rowCount > 0
+    }
+    modelIds.set(model.id, Number(modelId))
+  }
+  for (const program of source.repairPrograms) {
+    const modelId = modelIds.get(program.modelId)
+    if (!modelId) continue
+    const existing = (await client.query(`SELECT repair_program_id FROM ${quotedSchema}.repair_program WHERE model_id=$1 AND repair_program_name=$2`, [modelId, program.name])).rows[0]
+    if (existing) {
+      const result = await client.query(`UPDATE ${quotedSchema}.repair_program SET repair_program_code=$2,repair_duration_days=$3,status='ENABLED',updated_at=now() WHERE repair_program_id=$1 AND (repair_program_code IS DISTINCT FROM $2 OR repair_duration_days IS DISTINCT FROM $3 OR status<>'ENABLED')`, [existing.repair_program_id, program.code, program.durationDays || 18])
+      changed ||= result.rowCount > 0
+    } else {
+      const conflict = (await client.query(`SELECT repair_program_id FROM ${quotedSchema}.repair_program WHERE repair_program_id=$1`, [program.id])).rows[0]
+      const programId = conflict ? Number((await client.query(`SELECT COALESCE(MAX(repair_program_id),0)+1 AS value FROM ${quotedSchema}.repair_program`)).rows[0].value) : program.id
+      await client.query(`INSERT INTO ${quotedSchema}.repair_program(repair_program_id,model_id,repair_program_code,repair_program_name,repair_duration_days,status) VALUES($1,$2,$3,$4,$5,'ENABLED')`, [programId, modelId, program.code, program.name, program.durationDays || 18])
+      changed = true
+    }
+  }
+  return changed
 }
 
 function mapStateRows(clientData, definitions, payload) {
@@ -226,6 +277,7 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
         const sql = (await fs.readFile(new URL('./schema.sql', import.meta.url), 'utf8')).replaceAll('__SCHEMA_LITERAL__', literalSchema).replaceAll('__SCHEMA__', quotedSchema)
         await client.query(sql)
         await client.query(`CREATE TABLE IF NOT EXISTS ${quotedSchema}.pc1_maintenance_media (id uuid PRIMARY KEY, file_name text NOT NULL, mime_type text NOT NULL, content bytea NOT NULL, created_at timestamptz NOT NULL DEFAULT now())`)
+        const dictionariesMigrated = await ensurePlanningDictionaries(client, schema)
         const exists = await client.query(`SELECT to_regclass($1) AS legacy`, [`${schema}.metadata`])
         const meta = await client.query(`SELECT revision,schema_version FROM ${quotedSchema}.application_state WHERE singleton FOR UPDATE`)
         const revision = Number(meta.rows[0].revision)
@@ -254,7 +306,10 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
         }
         const monthlyMigrated = await migrateLegacyMonthlyPlans(client)
         if (monthlyMigrated) {
-          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=revision+$1,schema_version=4,updated_at=now() WHERE singleton`, [migrated ? 0 : 1])
+          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=revision+1,schema_version=4,updated_at=now() WHERE singleton`)
+          migrated = true
+        } else if (dictionariesMigrated && revision > 0 && !migrated) {
+          await client.query(`UPDATE ${quotedSchema}.application_state SET revision=revision+1,schema_version=4,updated_at=now() WHERE singleton`)
           migrated = true
         } else await client.query(`UPDATE ${quotedSchema}.application_state SET schema_version=4 WHERE singleton AND schema_version<4`)
         if (exists.rows[0].legacy) {

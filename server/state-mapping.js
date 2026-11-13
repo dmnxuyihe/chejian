@@ -9,7 +9,7 @@ const tableRows = [
   ['material','materials','material_id',{material_id:'id',material_code:'code',material_name:'name'}],
   ['workstation','workstations','workstation_id',{workstation_id:'id',workstation_code:'code',workstation_name:'name',production_line:'line'}],
   ['locomotive_model','locomotiveModels','model_id',{model_id:'id',model_code:'code',model_name:'name'}],
-  ['repair_program','repairPrograms','repair_program_id',{repair_program_id:'id',repair_program_code:'code',repair_program_name:'name'}],
+  ['repair_program','repairPrograms','repair_program_id',{repair_program_id:'id',repair_program_code:'code',repair_program_name:'name',repair_duration_days:'durationDays'}],
   ['maintenance_task','tasks','task_id',{task_id:'id',task_name:'name',standard_duration_min:'duration',sequence_no:'sequence'}],
   ['task_dependency','dependencies','dependency_id',{dependency_id:'id',dependency_type:'type'}],
   ['task_team_requirement','teamRequirements','operation_id',{operation_id:'operationId'}],

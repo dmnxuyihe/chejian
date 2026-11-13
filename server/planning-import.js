@@ -4,10 +4,10 @@ export const planFields = [
   { key: 'locomotiveNo', label: '机车编号', required: true, max: 64 },
   { key: 'modelName', label: '机型', required: true, max: 64 },
   { key: 'repairProgramName', label: '修程', required: true, max: 64 },
-  { key: 'repairSequence', label: '修次', required: false },
+  { key: 'repairSequence', label: '修次', required: true },
   { key: 'plannedEntryAt', label: '计划入段日期', required: true },
-  { key: 'ownerBureau', label: '配属局', required: false, max: 64 },
-  { key: 'ownerDepot', label: '配属段', required: false, max: 64 },
+  { key: 'ownerBureau', label: '配属局', required: true, max: 64 },
+  { key: 'ownerDepot', label: '配属段', required: true, max: 64 },
   { key: 'mileageKm', label: '累计走行公里', required: false },
   { key: 'remark', label: '备注', required: false, max: 500 },
 ]
@@ -100,11 +100,12 @@ export function makeTemplateXlsx() {
   const notes = [
     ['年度/月度检修计划导入模板填写说明'],
     ['数据工作表', '请只在“导入数据”填写，每行一条检修计划；不要更改表头。'],
-    ['必填字段', '机车编号、机型、修程、计划入段日期。机车编号列请设为文本，保留前导零。'],
-    ['选填字段', '修次、配属局、配属段、累计走行公里、备注。修次须为正整数；公里数为非负数，最多1位小数。'],
+    ['必填字段', '机车编号、机型、修程、修次、计划入段日期、配属局、配属段。机车编号列请设为文本且不得重复。'],
+    ['可选范围', '机型仅限HXD1、HXD1C、HXD1D、HXD3C、FXD3-J；修程仅限C1、C2、C3、C4、C5；配属段必须属于所选配属局。'],
+    ['选填字段', '仅累计走行公里、备注可不填。修次须为正整数；公里数为非负数，最多1位小数。'],
     ['日期格式', '支持 Excel 日期、YYYY-MM-DD、YYYY/MM/DD；按上海本地业务日期处理。'],
-    ['模板示例（仅说明，不会导入）', '机车编号：请填写实际机车编号；机型/修程：从系统有效字典选择；日期：2026-11-03'],
-    ['限制', '年度导入的日期须在所选年份；月度导入不限制日期月份。最多1000行、5MB。'],
+    ['模板示例（仅说明，不会导入）', '机车编号：HXD1C-0001；机型：HXD1C；修程：C1；日期：2026-11-03。'],
+    ['限制', '年度导入日期须在所选年份；指定月份导入时，每条计划入段日期必须属于所选月份，跨月行会单独标错。最多1000行、5MB。'],
   ]
   const instructions = XLSX.utils.aoa_to_sheet(notes)
   instructions['!cols'] = [{ wch: 30 }, { wch: 100 }]
