@@ -577,7 +577,36 @@ export function createMonthlyPlanService(database) {
       }
       if (draftItem?.change_type === 'ADDED') {
         if (app && (await client.query(`SELECT 1 FROM ${q('monthly_plan_application_item')} WHERE application_id=$1 AND draft_item_id=$2`, [app.application_id, draftItem.item_id])).rowCount) fail(409, '新增草稿已提交审核，请先撤回申请')
+        const draftVehicleRepairId = draftItem.vehicle_repair_id == null ? null : Number(draftItem.vehicle_repair_id)
         await client.query(`DELETE FROM ${q('monthly_plan_item')} WHERE item_id=$1`, [draftItem.item_id])
+        if (draftVehicleRepairId != null) await client.query(`
+          UPDATE ${q('vehicle_repair')} vr
+             SET status='CANCELLED'
+           WHERE vr.vehicle_repair_id=$1
+             AND vr.approval_status='DRAFT'
+             AND NOT EXISTS (
+               SELECT 1
+                 FROM ${q('monthly_plan_item')} i
+                 JOIN ${q('monthly_plan_version')} v ON v.plan_version_id=i.plan_version_id
+                 JOIN ${q('monthly_plan')} p ON p.monthly_plan_id=v.monthly_plan_id
+                WHERE i.vehicle_repair_id=vr.vehicle_repair_id
+                  AND NOT i.is_cancelled
+                  AND (
+                    v.version_status='DRAFT'
+                    OR p.current_published_version_id=v.plan_version_id
+                    OR EXISTS (
+                      SELECT 1 FROM ${q('monthly_plan_application')} a
+                       WHERE a.monthly_plan_id=p.monthly_plan_id
+                         AND a.application_status IN ('PENDING_REVIEW','PENDING_PUBLISH','REVIEWED')
+                         AND (a.submitted_version_id=v.plan_version_id OR a.current_review_version_id=v.plan_version_id)
+                    )
+                  )
+             )
+             AND NOT EXISTS (
+               SELECT 1 FROM ${q('vehicle_repair_schedule')} s
+                WHERE s.vehicle_repair_id=vr.vehicle_repair_id
+                  AND s.status NOT IN ('CANCELLED','CANCELED')
+             )`, [draftVehicleRepairId])
         await commitMutation(client); return { statusText: '新增车辆已从待提交变更中删除' }
       }
       if (draftItem?.change_type === 'MODIFIED') {

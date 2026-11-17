@@ -268,8 +268,31 @@ async function applyDatabaseConflicts(client, schema, rows) {
   if (!candidates.length) return []
   const locomotiveNos = [...new Set(candidates.map(row => row.data.locomotiveNo.toLocaleUpperCase('en-US')))]
   const result = await client.query(
-    `SELECT locomotive_no
-       FROM "${schema}".vehicle_repair WHERE upper(locomotive_no) = ANY($1::text[])`, [locomotiveNos])
+    `WITH active_locomotive_numbers AS (
+       SELECT vr.locomotive_no
+         FROM "${schema}".vehicle_repair vr
+        WHERE vr.status NOT IN ('CANCELLED','CANCELED')
+       UNION
+       SELECT i.locomotive_no
+         FROM "${schema}".monthly_plan_item i
+         JOIN "${schema}".monthly_plan_version v ON v.plan_version_id=i.plan_version_id
+         JOIN "${schema}".monthly_plan p ON p.monthly_plan_id=v.monthly_plan_id
+        WHERE NOT i.is_cancelled
+          AND (
+            v.version_status='DRAFT'
+            OR p.current_published_version_id=v.plan_version_id
+            OR EXISTS (
+              SELECT 1
+                FROM "${schema}".monthly_plan_application a
+               WHERE a.monthly_plan_id=p.monthly_plan_id
+                 AND a.application_status IN ('PENDING_REVIEW','PENDING_PUBLISH','REVIEWED')
+                 AND (a.submitted_version_id=v.plan_version_id OR a.current_review_version_id=v.plan_version_id)
+            )
+          )
+     )
+     SELECT DISTINCT locomotive_no
+       FROM active_locomotive_numbers
+      WHERE upper(locomotive_no) = ANY($1::text[])`, [locomotiveNos])
   const existing = result.rows
   const fresh = []
   for (const row of candidates) {

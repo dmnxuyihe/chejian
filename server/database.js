@@ -145,6 +145,39 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
   const pool = new pg.Pool({ connectionString, max: 8, connectionTimeoutMillis: 5000, idleTimeoutMillis: 30000 })
   pool.on('error', error => console.error('PostgreSQL连接中断:', error.code || 'CONNECTION_ERROR'))
 
+  async function retireOrphanMonthlyDraftVehicles(client) {
+    const result = await client.query(`
+      UPDATE ${quotedSchema}.vehicle_repair vr
+         SET status='CANCELLED'
+       WHERE vr.approval_status='DRAFT'
+         AND vr.plan_source='MONTHLY'
+         AND vr.status NOT IN ('CANCELLED','CANCELED')
+         AND NOT EXISTS (
+           SELECT 1
+             FROM ${quotedSchema}.monthly_plan_item i
+             JOIN ${quotedSchema}.monthly_plan_version v ON v.plan_version_id=i.plan_version_id
+             JOIN ${quotedSchema}.monthly_plan p ON p.monthly_plan_id=v.monthly_plan_id
+            WHERE i.vehicle_repair_id=vr.vehicle_repair_id
+              AND NOT i.is_cancelled
+              AND (
+                v.version_status='DRAFT'
+                OR p.current_published_version_id=v.plan_version_id
+                OR EXISTS (
+                  SELECT 1 FROM ${quotedSchema}.monthly_plan_application a
+                   WHERE a.monthly_plan_id=p.monthly_plan_id
+                     AND a.application_status IN ('PENDING_REVIEW','PENDING_PUBLISH','REVIEWED')
+                     AND (a.submitted_version_id=v.plan_version_id OR a.current_review_version_id=v.plan_version_id)
+                )
+              )
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM ${quotedSchema}.vehicle_repair_schedule s
+            WHERE s.vehicle_repair_id=vr.vehicle_repair_id
+              AND s.status NOT IN ('CANCELLED','CANCELED')
+         )`)
+    return result.rowCount > 0
+  }
+
   async function writeData(client, data, definitions) {
     const { storedRows, payload } = buildTableRows(data, definitions)
     const reverse = [...stateTables].reverse()
@@ -305,7 +338,8 @@ export function createDatabase({ connectionString, schema = 'pc1' }) {
           migrated = true
         }
         const monthlyMigrated = await migrateLegacyMonthlyPlans(client)
-        if (monthlyMigrated) {
+        const orphanMonthlyDraftsRetired = await retireOrphanMonthlyDraftVehicles(client)
+        if (monthlyMigrated || orphanMonthlyDraftsRetired) {
           await client.query(`UPDATE ${quotedSchema}.application_state SET revision=revision+1,schema_version=4,updated_at=now() WHERE singleton`)
           migrated = true
         } else if (dictionariesMigrated && revision > 0 && !migrated) {

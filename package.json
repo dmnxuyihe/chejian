@@ -19,7 +19,7 @@
     "test:monthly-logs": "node tests/monthly_plan_status_logs.mjs && node tests/monthly_plan_status_log_ui.mjs",
     "test:workshop-calendar": "node tests/workshop_calendar.mjs",
     "db:seed-workshop-calendar": "node scripts/seed-workshop-calendar.mjs",
-    "test:planning-import": "node tests/planning_import.mjs",
+    "test:planning-import": "node tests/planning_import.mjs && node tests/monthly_import_deleted_draft.mjs",
     "test:pc1": "node tests/pc1_simulation.mjs && node tests/pc1_database.mjs",
     "test:pc1:operations": "node tests/pc1_operations.mjs",
     "test:pc1:stress": "node tests/pc1_stress_500.mjs",
