@@ -1,3 +1,5 @@
+import {toolDateInput} from '../shared/tool-dates.js'
+export const TOOL_INSPECTION_WARNING_DAYS=30
 // Shared domain rules for the tool workspace and authenticated device gateway.
 const lists=['warehouses','categories','assets','kits','loans','transfers','services','disposals','counts','devices','events','audit','commands']
 export const emptyToolManagement=()=>Object.fromEntries([['version',1],['countAvailabilityVersion',1],...lists.map(key=>[key,[]])])
@@ -6,6 +8,47 @@ const text=(v,label,max=160)=>{if(typeof v!=='string'||!v.trim()||v.length>max)f
 const qty=(v,label='数量',zero=false)=>{const n=Number(v);if(!Number.isSafeInteger(n)||n<(zero?0:1)||n>1000000)fail(`${label}必须为${zero?'非负':'正'}整数且不超过100万`);return n}
 const date=(v,label)=>{if(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}(T.*)?$/.test(v)||!Number.isFinite(new Date(v).getTime()))fail(`${label}无效`);return v}
 const next=rows=>Math.max(0,...rows.map(r=>r.id))+1
+function nextToolId(m,collection,rows=m[collection]){
+ m.idSequences||={}
+ const creation={assets:['ASSET_CREATE','ADOPT_LEGACY'],kits:['KIT_SAVE'],tools:['TOOL_SAVE'],categories:['CATEGORY_SAVE'],devices:['DEVICE_SAVE']}[collection]||[]
+ let highest=Math.max(m.idSequences[collection]||0,...rows.map(r=>r.id),0)
+ if(m.idSequences[collection]===undefined)for(const c of m.commands){try{if(creation.includes(JSON.parse(c.signature).type))highest=Math.max(highest,c.result?.id||0)}catch{}}
+ m.idSequences[collection]=highest+1;return highest+1
+}
+export const toolObjectIdentity=(row,kind='asset')=>row?(row.identity||JSON.stringify([kind,row.id,row.createdAt||'',row.toolId||null]))+(kind==='kit'?JSON.stringify(row.lines):''):null
+export function expectedToolObjects(m,type,p){
+ if(type==='BATCH')return (p.commands||[]).flatMap(c=>expectedToolObjects(m,c.type,c.payload))
+ const loan=m.loans.find(l=>l.id===Number(p.loanId))
+ const ids=new Set(p.assetId?[Number(p.assetId)]:[]),kitId=p.kitId||(['KIT_SAVE','KIT_DELETE'].includes(type)?p.id:type==='KIT_RETURN'?loan?.kitId:null)
+ const kit=m.kits.find(k=>k.id===Number(kitId))
+ if(loan&&!kit&&type!=='RETURN')for(const l of loan.lines)ids.add(l.assetId)
+ const collection={SERVICE_FINISH:'services',TRANSFER_FINISH:'transfers',DISPOSAL_REVIEW:'disposals'}[type],row=collection?m[collection].find(r=>r.id===Number(p.id)):null
+ if(row)ids.add(row.assetId)
+ return [...(kitId?[{kind:'kit',id:Number(kitId),code:kit?.code,identity:toolObjectIdentity(kit,'kit'),members:kit?.lines.map(l=>({id:l.assetId,identity:toolObjectIdentity(m.assets.find(a=>a.id===l.assetId))}))}]:[]),...[...ids].map(id=>({kind:'asset',id,code:m.assets.find(a=>a.id===id)?.code,identity:toolObjectIdentity(m.assets.find(a=>a.id===id))}))]
+}
+export function assertToolObjects(m,p){
+ if(p.commands!==undefined){if(!Array.isArray(p.commands)||p.commands.some(c=>!c||typeof c!=='object'||!c.payload||typeof c.payload!=='object'||Array.isArray(c.payload)))fail('批量办理明细无效');for(const c of p.commands)assertToolObjects(m,c.payload)}
+ if(p.expectedObjects===undefined)return
+ if(!Array.isArray(p.expectedObjects)||p.expectedObjects.length>300)fail('工具对象核对信息无效')
+ const changed=[]
+ for(const e of p.expectedObjects){
+  if(!e||!['asset','kit'].includes(e.kind)||!Number.isSafeInteger(e.id)||e.id<1||typeof e.identity!=='string'||e.members!==undefined&&(!Array.isArray(e.members)||e.members.some(r=>!r||!Number.isSafeInteger(r.id)||typeof r.identity!=='string')))fail('工具对象核对信息无效，请重新选择工具')
+  const row=(e.kind==='asset'?m.assets:e.kind==='kit'?m.kits:[]).find(r=>r.id===e.id)
+  const membersChanged=e.members!==undefined&&(!Array.isArray(e.members)||e.members.length!==row?.lines?.length||e.members.some(member=>!row.lines.some(l=>l.assetId===member.id)||toolObjectIdentity(m.assets.find(a=>a.id===member.id))!==member.identity))
+  if(!row||!e.identity||toolObjectIdentity(row,e.kind)!==e.identity||membersChanged)changed.push({kind:e.kind,id:e.id,code:e.code||row?.code||`#${e.id}`})
+ }
+ if(changed.length)throw Object.assign(new Error(`${changed.map(e=>e.code).join('、')}：原工具已删除、被替换或套装组成已变化；本次未提交，请重新选择工具`),{status:400,toolTargetChanged:true,invalidToolObjects:changed})
+}
+// Store common scalar fields once; every item still runs in the same transaction.
+export function compactToolBatch(p){
+ if(!Array.isArray(p.commands)||p.commands.length<2)return p
+ const shared={...p.shared},commands=p.commands.map(c=>({...c,payload:{...c.payload}}))
+ for(const key of ['provider','reason','borrower','borrowType','dueAt','returner','certificate','result','decision','opinion','kind','receivedAt','warehouseId']){
+  const value=commands[0].payload[key]
+  if(value!==undefined&&(typeof value==='string'||typeof value==='number')&&commands.every(c=>c.payload[key]===value)){shared[key]=value;for(const c of commands)delete c.payload[key]}
+ }
+ return {...p,shared,commands}
+}
 const get=(rows,id,label)=>rows.find(r=>r.id===Number(id))||fail(`${label}不存在`)
 const open=row=>row.status==='OPEN'
 const outstanding=line=>line.quantity-line.returned-(line.disposed||0)
@@ -51,11 +94,11 @@ export function assetBusinessHistory(m,id,kind){
   return m[kind].filter(r=>r.assetId===id||r.resultingAssetId===id||ids.has(r.id))
 }
 function splitAsset(m,a,n,suffix,sourceKind,sourceId,changes={}){
-  const id=next(m.assets),base=`${a.code.slice(0,45)}-${suffix}`,code=m.assets.some(r=>r.code.toLowerCase()===base.toLowerCase())?`${base}-${id}`:base
+  const id=nextToolId(m,'assets'),base=`${a.code.slice(0,45)}-${suffix}`,code=m.assets.some(r=>r.code.toLowerCase()===base.toLowerCase())?`${base}-${id}`:base
   const sourceRecordIds=Object.fromEntries(['services','transfers'].map(kind=>[kind,assetBusinessHistory(m,a.id,kind).filter(r=>['CLOSED','RECEIVED'].includes(r.status)&&(!r.resultingAssetId||r.resultingAssetId===a.id)).map(r=>r.id)]))
   if(!sourceRecordIds[sourceKind].includes(sourceId))sourceRecordIds[sourceKind].push(sourceId)
   a.quantity-=n
-  const child={...a,id,code,tag:'',quantity:n,parentAssetId:a.id,sourceRecordIds,...changes}
+  const child={...a,id,identity:crypto.randomUUID(),code,tag:'',quantity:n,parentAssetId:a.id,sourceRecordIds,...changes}
   m.assets.push(child);return child
 }
 export function toolAvailableQuantity(state,toolId,at=new Date()){
@@ -74,7 +117,7 @@ export function toolAlerts(state,at=new Date()){
   }
   for(const a of m.assets){if(a.status!=='AVAILABLE'||!a.quantity)continue;const due=toolDueAt(a)
     if(due==='MISSING')result.push({type:'INSPECTION_MISSING',name:a.code,message:'已设置检定周期，尚未登记合格检定日期',assetId:a.id})
-    else if(due&&new Date(due).getTime()<=now+7*86400000)result.push({type:'INSPECTION_DUE',name:a.code,message:`${new Date(due).getTime()<=now?'已到期':'7天内到期'}：${due.slice(0,10)}`,assetId:a.id})
+    else if(due&&new Date(due).getTime()<=now+TOOL_INSPECTION_WARNING_DAYS*86400000)result.push({type:'INSPECTION_DUE',name:a.code,message:`${new Date(due).getTime()<=now?'已到期':`${TOOL_INSPECTION_WARNING_DAYS}天内到期`}：${toolDateInput(due)}`,assetId:a.id})
   }
   for(const l of m.loans.filter(open))if(new Date(l.dueAt).getTime()<now)result.push({type:'OVERDUE',name:`借用单 ${l.id}`,message:`${l.borrower}应于${l.dueAt.replace('T',' ')}归还`,loanId:l.id})
   for(const e of m.events.filter(e=>e.status==='ERROR'&&!e.resolvedAt))result.push({type:'DEVICE_ERROR',name:e.deviceName||'作业工具核验',message:e.message,eventId:e.id})
@@ -101,7 +144,7 @@ function updateToolApproval(state,disposal,decision,opinion,actor,now){
   if(!approval)fail('未找到对应的工具审核记录')
   approval.approvalStatus=decision;approval.approvalOpinion=opinion;approval.approverId=employeeIdByName(state,actor);approval.approvedAt=now
 }
-const available=(m,a,n,now,inspection=true)=>{if((inspection?assetStock(m,a):assetPhysicalAvailable(m,a))<n)fail('在库可用数量不足、存在盘亏待处理或工具已停用');if(inspection&&!validAt(a,now))fail('工具检定已到期或缺少检定日期，不能领用或调拨')}
+const available=(m,a,n,now,inspection=true)=>{const maximum=inspection?assetStock(m,a):assetPhysicalAvailable(m,a);if(maximum<n)throw Object.assign(new Error(`${a.code}：当前最多可办理 ${maximum} 件，在库可用数量不足、存在盘亏待处理或工具已停用`),{status:400,toolAssetId:a.id,availableQuantity:maximum});if(inspection&&!validAt(a,now))fail('工具检定已到期或缺少检定日期，不能领用或调拨')}
 const stockKey=(m,a)=>JSON.stringify([a.quantity,a.status,a.warehouseId,assetHeld(m,a.id)])
 function useCheck(state,asset,scheduleId){
   if(!scheduleId)return
@@ -127,29 +170,50 @@ export function taskToolCheck(state,scheduleTaskId,at=new Date()){
   return {ok:true}
 }
 
+// Capture historical identity at the time of a command. Looking up an old log
+// through today's live ledger loses its subject after a rename or deletion.
+function auditSubjects(state,type,p,result={}){
+ const m=state.toolManagement,ids=new Set(p.assetId?[Number(p.assetId)]:[])
+ if(['ASSET_CREATE','ADOPT_LEGACY'].includes(type)&&result.id)ids.add(result.id)
+ const collection={SERVICE_FINISH:'services',TRANSFER_FINISH:'transfers',DISPOSAL_REVIEW:'disposals'}[type]
+ const record=collection?m[collection].find(r=>r.id===Number(p.id)):null
+ if(record){ids.add(record.assetId);if(record.resultingAssetId)ids.add(record.resultingAssetId)}
+ const loan=m.loans.find(l=>l.id===Number(p.loanId));if(loan)for(const l of loan.lines)ids.add(l.assetId)
+ const kitId=p.kitId||(['KIT_SAVE','KIT_DELETE'].includes(type)?p.id||result.id:null),kit=m.kits.find(k=>k.id===Number(kitId))
+ if(kit)for(const l of kit.lines)ids.add(l.assetId)
+ const objects=[...ids].flatMap(id=>{const a=m.assets.find(a=>a.id===id);return a?[{kind:'asset',id:a.id,toolId:a.toolId,name:state.tools.find(t=>t.id===a.toolId)?.name||'',warehouseName:m.warehouses.find(w=>w.id===a.warehouseId)?.name||'',...structuredClone(a)}]:[]})
+ if(kit)objects.push({kind:'kit',...structuredClone(kit),quantity:1,warehouseName:m.warehouses.find(w=>w.id===m.assets.find(a=>a.id===kit.lines[0]?.assetId)?.warehouseId)?.name||''})
+ const basic={CATEGORY_SAVE:['category',m.categories],CATEGORY_DELETE:['category',m.categories],TOOL_SAVE:['tool',state.tools],TOOL_DELETE:['tool',state.tools],DEVICE_SAVE:['device',m.devices],DEVICE_DELETE:['device',m.devices],REQUIREMENT_SAVE:['requirement',state.toolRequirements],REQUIREMENT_DELETE:['requirement',state.toolRequirements]}[type]
+ if(basic){const [kind,rows]=basic;let row=rows.find(r=>r.id===Number(p.id||result.id));if(kind==='requirement'&&!p.id)row=rows.find(r=>r.toolId===Number(p.toolId)&&r.taskId===Number(p.taskId));if(row)objects.push({kind,...structuredClone(row),...(kind==='requirement'?{name:state.tasks.find(t=>t.id===row.taskId)?.name||'',code:state.tools.find(t=>t.id===row.toolId)?.code||''}:{})})}
+ return objects
+}
+
 export function applyToolCommand(state,input,{now=new Date().toISOString(),hardware=false}={}){
   // All changes happen on a copy. A rejected command cannot partly reserve stock.
   const copy=structuredClone(state),m=copy.toolManagement ||= emptyToolManagement()
   upgradeToolCountAvailability(copy)
   if(!input||typeof input!=='object')fail('缺少业务指令')
   const type=text(input.type,'操作类型',40),actor=text(input.actor,'经办人',80),p=input.payload||{}
-  if(typeof p!=='object'||Array.isArray(p)||JSON.stringify(p).length>64000)fail('业务明细格式无效或超过64KB')
+  if(typeof p!=='object'||Array.isArray(p)||JSON.stringify(p).length>64000)fail('本次办理明细过大，请减少所选项或缩短说明后重新确认')
   const requestId=text(input.requestId,'请求编号',100)
   const prior=m.commands.find(c=>c.requestId===requestId)
   const signature=JSON.stringify({type,actor,payload:p,hardware})
   if(prior){if(prior.signature!==signature)fail('同一请求编号不能用于不同操作');return {...prior.result,duplicate:true}}
+  assertToolObjects(m,p)
   let result={ok:true}
   const asset=()=>get(m.assets,p.assetId,'工具实物')
   const warehouse=id=>get(m.warehouses,id,'工具库')
-  const audit=(action,detail)=>m.audit.push({id:next(m.audit),at:now,actor,actorEmployeeId:employeeIdByName(copy,actor),action,detail})
+  const beforeSubjects=auditSubjects(copy,type,p),auditStart=m.audit.length
+  const audit=(action,detail,objects)=>m.audit.push({id:next(m.audit),at:now,actor,actorUserId:input.actorUserId||null,actorEmployeeId:employeeIdByName(copy,actor),action,detail,objects})
   switch(type){
     case 'BATCH':{
       if(!Array.isArray(p.commands)||!p.commands.length||p.commands.length>100)fail('请选择1至100项办理')
+      if(p.shared!==undefined&&(!p.shared||typeof p.shared!=='object'||Array.isArray(p.shared)||Object.keys(p.shared).some(key=>!['provider','reason','borrower','borrowType','dueAt','returner','certificate','result','decision','opinion','kind','receivedAt','warehouseId'].includes(key))))fail('批量公共信息无效')
       const allowed=['BORROW','RETURN','KIT_RETURN','TRANSFER','TRANSFER_FINISH','SERVICE_SEND','SERVICE_FINISH','DISPOSAL_REQUEST','DISPOSAL_REVIEW','ASSET_EDIT','ADOPT_LEGACY','ASSET_DELETE','KIT_DELETE']
       result.results=[]
       for(const [i,c] of p.commands.entries()){
         if(!c||!allowed.includes(c.type))fail('不支持的批量操作')
-        result.results.push(applyToolCommand(copy,{type:c.type,payload:c.payload,actor,requestId:`${requestId}:${i}`},{now,hardware:false}))
+        result.results.push(applyToolCommand(copy,{type:c.type,payload:{...p.shared,...c.payload},actor,actorUserId:input.actorUserId,requestId:`${requestId}:${i}`},{now,hardware:false}))
       }
       Object.assign(m,copy.toolManagement);break
     }
@@ -210,9 +274,9 @@ export function applyToolCommand(state,input,{now=new Date().toISOString(),hardw
     }
     case 'TOOL_SAVE':{
       const old=p.id?get(copy.tools,p.id,'工具字典'):null
-      const row={...old,id:old?.id||next(copy.tools),code:text(p.code,'工具品种编码',64),name:text(p.name,'工具名称',80),specification:String(p.specification||'').slice(0,160),manufacturer:String(p.manufacturer||'').slice(0,160),status:p.status||'AVAILABLE',quantity:old?.quantity||0,lowStock:qty(p.lowStock??0,'低储阈值',true)}
+      const row={...old,id:old?.id||nextToolId(m,'tools',copy.tools),code:text(p.code,'工具品种编码',64),name:text(p.name,'工具名称',80),specification:String(p.specification||'').slice(0,160),manufacturer:String(p.manufacturer||'').slice(0,160),status:p.status||'AVAILABLE',quantity:old?.quantity||0,lowStock:qty(p.lowStock??old?.lowStock??0,'低储阈值',true)}
       if(!['AVAILABLE','MAINTENANCE','DISABLED'].includes(row.status))fail('工具状态无效')
-      if(p.lowStockWarehouseId){
+      if(p.lowStockWarehouseId&&p.lowStock!==undefined){
         const wid=warehouse(p.lowStockWarehouseId).id
         row.warehouseLowStock={...old?.warehouseLowStock,[wid]:row.lowStock}
         row.lowStock=old?.lowStock??0
@@ -228,6 +292,10 @@ export function applyToolCommand(state,input,{now=new Date().toISOString(),hardw
       else copy.toolRequirements.push({id:next(copy.toolRequirements),toolId:tool.id,taskId:task.id,quantity,quantityBasis:'manual',sourceSheet:'工具管理'})
       break
     }
+    case 'REQUIREMENT_DELETE':{
+      const row=get(copy.toolRequirements,p.id,'工序工具绑定')
+      copy.toolRequirements=copy.toolRequirements.filter(r=>r.id!==row.id);result.id=row.id;break
+    }
     case 'ASSET_CREATE':case 'ADOPT_LEGACY':{
       const t=get(copy.tools,p.toolId,'工具字典'),w=warehouse(p.warehouseId)
       if(type==='ADOPT_LEGACY'&&m.assets.some(a=>a.toolId===t.id))fail('该品种已接管，不能重复接管旧库存')
@@ -235,7 +303,7 @@ export function applyToolCommand(state,input,{now=new Date().toISOString(),hardw
       const count=type==='ADOPT_LEGACY'?qty(t.quantity):qty(p.quantity)
       const mode=type==='ADOPT_LEGACY'?(p.mode||'BULK'):p.mode
       if(!['BULK','NUMBERED'].includes(mode)||mode==='NUMBERED'&&count!==1&&type!=='ADOPT_LEGACY')fail('单件工具数量必须为1')
-      const row={id:next(m.assets),toolId:t.id,warehouseId:w.id,code:text(p.code,'实物/批次编号',64),mode,quantity:mode==='NUMBERED'?1:count,status:'AVAILABLE',tag:String(p.tag||'').trim().slice(0,100),inspectionCycleMonths:qty(p.inspectionCycleMonths??t.inspectionCycleMonths??0,'检定周期',true),lastInspectionAt:p.lastInspectionAt?date(p.lastInspectionAt,'最近合格检定日期'):null,receivedAt:p.receivedAt?date(p.receivedAt,'入库时间'):now,lastRepairAt:p.lastRepairAt?date(p.lastRepairAt,'最后检修时间'):null,createdAt:now}
+      const row={id:nextToolId(m,'assets'),identity:crypto.randomUUID(),toolId:t.id,warehouseId:w.id,code:text(p.code,'实物/批次编号',64),mode,quantity:mode==='NUMBERED'?1:count,status:'AVAILABLE',tag:String(p.tag||'').trim().slice(0,100),inspectionCycleMonths:qty(p.inspectionCycleMonths??t.inspectionCycleMonths??0,'检定周期',true),lastInspectionAt:p.lastInspectionAt?date(p.lastInspectionAt,'最近合格检定日期'):null,receivedAt:p.receivedAt?date(p.receivedAt,'入库时间'):now,lastRepairAt:p.lastRepairAt?date(p.lastRepairAt,'最后检修时间'):null,createdAt:now}
       if(row.lastInspectionAt&&new Date(row.lastInspectionAt)>new Date(now))fail('最近合格检定日期不能在未来')
       if(new Date(row.receivedAt)>new Date(now)||row.lastRepairAt&&new Date(row.lastRepairAt)>new Date(now))fail('入库或检修时间不能在未来')
       const pieces=mode==='NUMBERED'&&type==='ADOPT_LEGACY'?count:1
@@ -257,7 +325,7 @@ export function applyToolCommand(state,input,{now=new Date().toISOString(),hardw
       if(lines.some(l=>l.quantity>get(m.assets,l.assetId,'套装成员').quantity))fail('套装成员数量不足')
       if(new Set(lines.map(l=>get(m.assets,l.assetId,'套装成员').warehouseId)).size!==1)fail('套装成员须位于同一工具库')
       if(p.id&&m.loans.some(l=>l.kitId===Number(p.id)&&open(l)))fail('套装借出期间不能修改组成')
-      const row={id:p.id?get(m.kits,p.id,'套装').id:next(m.kits),code:text(p.code,'套装编号',64),name:text(p.name,'套装名称',80),lines}
+      const row={id:p.id?get(m.kits,p.id,'套装').id:nextToolId(m,'kits'),identity:p.id?(get(m.kits,p.id,'套装').identity||JSON.stringify(['kit',Number(p.id),get(m.kits,p.id,'套装').createdAt||'',get(m.kits,p.id,'套装').toolId||null])):crypto.randomUUID(),code:text(p.code,'套装编号',64),name:text(p.name,'套装名称',80),lines}
       if(m.kits.some(k=>k.id!==row.id&&k.code.toLowerCase()===row.code.toLowerCase()))fail('套装编号重复')
       const old=m.kits.find(k=>k.id===row.id);if(old)Object.assign(old,row);else m.kits.push(row);result.id=row.id;break
     }
@@ -393,7 +461,7 @@ export function applyToolCommand(state,input,{now=new Date().toISOString(),hardw
     case 'COUNT_CANCEL':{const row=get(m.counts,p.id,'盘点单');if(!open(row))fail('盘点单已处理');row.status='CANCELLED';row.finishedAt=now;break}
     case 'DEVICE_SAVE':{
       if(!['CABINET','ROOM'].includes(p.kind))fail('设施类型无效')
-      const row={id:p.id?get(m.devices,p.id,'设施').id:next(m.devices),code:text(p.code,'设备编码',64),name:text(p.name,'设备名称',80),kind:p.kind,warehouseId:warehouse(p.warehouseId).id,enabled:p.enabled!==false}
+      const row={id:p.id?get(m.devices,p.id,'设施').id:nextToolId(m,'devices'),code:text(p.code,'设备编码',64),name:text(p.name,'设备名称',80),kind:p.kind,warehouseId:warehouse(p.warehouseId).id,enabled:p.enabled!==false}
       if(m.devices.some(d=>d.id!==row.id&&d.code===row.code))fail('设备编码重复')
       const old=m.devices.find(d=>d.id===row.id);if(old)Object.assign(old,row);else m.devices.push(row);result.id=row.id;break
     }
@@ -442,7 +510,11 @@ export function applyToolCommand(state,input,{now=new Date().toISOString(),hardw
     case 'EVENT_RESOLVE':{const row=get(m.events,p.id,'异常记录');if(row.status!=='ERROR'||row.resolvedAt)fail('异常已处理或不存在');row.resolution=text(p.resolution,'处理说明',500);row.resolvedAt=now;row.resolvedBy=actor;break}
     default:fail('不支持的工具业务操作')
   }
-  synchronize(copy);audit(type,JSON.stringify(p));m.commands.push({id:next(m.commands),requestId,signature,result:structuredClone(result),at:now})
+  synchronize(copy)
+  const afterSubjects=auditSubjects(copy,type,p,result),keys=new Set([...beforeSubjects,...afterSubjects].map(o=>`${o.kind}:${o.id}`))
+  let objects=[...keys].map(key=>({before:beforeSubjects.find(o=>`${o.kind}:${o.id}`===key)||null,after:afterSubjects.find(o=>`${o.kind}:${o.id}`===key)||null}))
+  if(type==='BATCH')objects=m.audit.slice(auditStart).flatMap(r=>r.objects||[])
+  audit(type,JSON.stringify(p),objects);m.commands.push({id:next(m.commands),requestId,signature,result:structuredClone(result),at:now})
   validateToolManagement(copy)
   state.toolManagement=copy.toolManagement;state.tools=copy.tools;state.toolRequirements=copy.toolRequirements;state.approvalRecords=copy.approvalRecords
   return result

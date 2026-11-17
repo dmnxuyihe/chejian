@@ -5,6 +5,7 @@ import { loadConfig } from '../server/config.js'
 import { createDatabase } from '../server/database.js'
 import { createHandler } from '../server/http.js'
 import { createMonthlyPlanService } from '../server/monthly-plans-v2.js'
+import {authenticateTestPage} from './tool_auth_fixture.mjs'
 
 const require=createRequire(import.meta.url)
 const { chromium }=require('playwright')
@@ -22,6 +23,7 @@ try{
   const base=`http://127.0.0.1:${server.address().port}`
   browser=await chromium.launch({channel:process.platform==='win32'?'msedge':undefined,headless:true})
   const page=await browser.newPage({viewport:{width:1440,height:1000}})
+  await authenticateTestPage(page,db,base)
   await page.goto(`${base}/#/functions/plans/monthly-calendar`)
   await page.locator('[data-calendar-month]').fill('2197-08')
   await page.locator('[data-calendar-month]').dispatchEvent('change')

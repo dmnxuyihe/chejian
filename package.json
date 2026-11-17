@@ -7,6 +7,8 @@
     "node": ">=20.12.0"
   },
   "scripts": {
+    "auth:user": "node scripts/create-login-user.mjs",
+    "test:tools:document": "node tests/tool_document_requirements.mjs",
     "db:init": "node scripts/database.mjs init",
     "db:init-monthly-plan": "node scripts/init-monthly-plan.mjs",
     "db:tools-setup": "node scripts/setup-tool-warehouses.mjs",
@@ -35,13 +37,18 @@
     "test:logic": "node tests/schedule_logic.mjs",
     "test:roles": "node tests/phase_one_roles.mjs",
     "test:navigation": "node tests/function_navigation.mjs",
-    "test:tools": "node tests/tool_management.mjs && node tests/tool_management_database.mjs && node tests/tool_ledger_workflow.mjs && node tests/tool_table_commands.mjs && node tests/tool_workspace_ui.mjs && node tests/tool_management_stress_1000.mjs && node tests/tool_ux_regressions.mjs && node tests/tool_additional_regressions.mjs && node tests/tool_additional_regressions_ui.mjs && node tests/tool_sections_ui.mjs && node tests/tool_user_100_ui.mjs && node tests/ui_smoke.mjs",
-    "test": "node tests/phase_one_roles.mjs && node tests/schedule_logic.mjs && node tests/v01_acceptance.mjs && node tests/planning_calendar.mjs && node tests/demo_persistence.mjs && node tests/database_persistence.mjs && node tests/function_navigation.mjs && node tests/tool_management.mjs && node tests/tool_management_database.mjs && node tests/tool_ledger_workflow.mjs && node tests/tool_table_commands.mjs && node tests/tool_workspace_ui.mjs && node tests/tool_management_stress_1000.mjs && node tests/ui_smoke.mjs && node tests/tool_ux_regressions.mjs && node tests/tool_additional_regressions.mjs && node tests/tool_additional_regressions_ui.mjs && node tests/tool_sections_ui.mjs && node tests/tool_user_100_ui.mjs",
+    "test:tools": "node tests/tool_object_identity.mjs && node tests/tool_management.mjs && node tests/tool_management_database.mjs && node tests/tool_ledger_workflow.mjs && node tests/tool_table_commands.mjs && node tests/tool_workspace_ui.mjs && node tests/tool_management_stress_1000.mjs && node tests/tool_ux_regressions.mjs && node tests/tool_additional_regressions.mjs && node tests/tool_additional_regressions_ui.mjs && node tests/tool_sections_ui.mjs && node tests/tool_user_100_ui.mjs && node tests/ui_smoke.mjs && node tests/tool_research_fixes_ui.mjs",
+    "test": "node tests/tool_object_identity.mjs && node tests/phase_one_roles.mjs && node tests/schedule_logic.mjs && node tests/v01_acceptance.mjs && node tests/planning_calendar.mjs && node tests/demo_persistence.mjs && node tests/database_persistence.mjs && node tests/function_navigation.mjs && node tests/tool_management.mjs && node tests/tool_management_database.mjs && node tests/tool_ledger_workflow.mjs && node tests/tool_table_commands.mjs && node tests/tool_workspace_ui.mjs && node tests/tool_management_stress_1000.mjs && node tests/ui_smoke.mjs && node tests/tool_ux_regressions.mjs && node tests/tool_additional_regressions.mjs && node tests/tool_additional_regressions_ui.mjs && node tests/tool_sections_ui.mjs && node tests/tool_user_100_ui.mjs && node tests/tool_research_fixes_ui.mjs",
     "test:tools:additional": "node tests/tool_additional_regressions.mjs && node tests/tool_additional_regressions_ui.mjs",
     "test:tools:ux": "node tests/tool_ux_regressions.mjs",
     "test:merge": "npm run test:monthly-tools && npm run test:tools",
     "test:tools:sections": "node tests/tool_sections_ui.mjs",
-    "test:tools:user100": "node tests/tool_user_100_ui.mjs"
+    "test:tools:user100": "node tests/tool_user_100_ui.mjs",
+    "test:tools:research-fixes": "node tests/tool_research_fixes_ui.mjs",
+    "test:tools:context-fixes": "node tests/tool_context_fixes_ui.mjs",
+    "test:tools:followup-fixes": "node tests/tool_object_identity.mjs && node tests/tool_followup_fixes_ui.mjs",
+    "test:tools:rounds-fixes": "node tests/tool_rounds_regressions.mjs && node tests/tool_round4_fixes_ui.mjs && node tests/tool_round5_fixes_ui.mjs && node tests/tool_round6_fixes_ui.mjs",
+    "test:tools:simple": "node tests/tool_simple_workflow_ui.mjs"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",

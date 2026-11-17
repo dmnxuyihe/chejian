@@ -6,6 +6,7 @@ import {createDatabase} from '../server/database.js'
 import {loadConfig} from '../server/config.js'
 import {createHandler} from '../server/http.js'
 import {exportDemoSnapshot} from '../src/core/demo-persistence.js'
+import {toolTestSession} from './tool_auth_fixture.mjs'
 const s=createState(),checks=[]
 let seq=0
 const run=(type,payload={},actor='测试员')=>applyToolCommand(s,{type,payload,actor,requestId:`table-${++seq}`})
@@ -55,7 +56,8 @@ try{
  server=http.createServer(createHandler(db));await new Promise(r=>server.listen(0,'127.0.0.1',r));const base=`http://127.0.0.1:${server.address().port}`
  const current=await db.read()
  const payload={type:'BATCH',actor:'数据库领用员',requestId:'db-batch',revision:current.revision,payload:{commands:[a,b].map(assetId=>({type:'BORROW',payload:{assetId,quantity:1,borrower:'乙',dueAt:'2099-01-01'}}))}}
- const post=async p=>{const response=await fetch(base+'/api/tools/commands',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});return {status:response.status,body:await response.json()}}
+ const cookie=await toolTestSession(db,base,'数据库领用员')
+ const post=async p=>{const response=await fetch(base+'/api/tools/commands',{method:'POST',headers:{'Content-Type':'application/json',cookie},body:JSON.stringify(p)});return {status:response.status,body:await response.json()}}
  const saved=await post(payload);assert.equal(saved.status,200)
  const retry=await post(payload);assert.equal(retry.body.duplicate,true)
  const loaded=await db.read();assert.equal(loaded.revision,current.revision+1);assert.equal(loaded.snapshot.data.toolManagement.loans.length,current.snapshot.data.toolManagement.loans.length+2)

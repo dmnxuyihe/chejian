@@ -5,6 +5,7 @@ import {createDatabase} from '../server/database.js'
 import {createHandler} from '../server/http.js'
 import {loadConfig} from '../server/config.js'
 import {exportDemoSnapshot} from '../src/core/demo-persistence.js'
+import {toolTestSession} from './tool_auth_fixture.mjs'
 const schema=`tool_test_${Date.now()}_${process.pid}`
 let db=createDatabase({...loadConfig(),schema}),server,revision,seq=0
 const priorToken=process.env.TOOL_DEVICE_TOKEN
@@ -12,7 +13,7 @@ try{
  await db.init();revision=(await db.read()).revision
  server=http.createServer(createHandler(db));await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve))
  const base=`http://127.0.0.1:${server.address().port}`
- const post=async(path,data,headers={})=>{const r=await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:JSON.stringify(data)});return {status:r.status,data:await r.json()}}
+ const post=async(path,data,headers={})=>{const cookie=path==='/api/tools/commands'?await toolTestSession(db,base,data.actor):'';const r=await fetch(base+path,{method:'POST',headers:{'Content-Type':'application/json',...(cookie?{cookie}:{}),...headers},body:JSON.stringify(data)});return {status:r.status,data:await r.json()}}
  const run=async(type,payload,actor='经办甲')=>{const result=await post('/api/tools/commands',{requestId:`db-${++seq}`,revision,type,payload,actor});assert.equal(result.status,200,JSON.stringify(result.data));revision=result.data.revision;return result.data}
  const w=await run('WAREHOUSE_SAVE',{code:'W',name:'测试工具库'})
  const t=await run('TOOL_SAVE',{code:'T',name:'测试扳手',lowStock:1})

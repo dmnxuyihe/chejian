@@ -1,9 +1,10 @@
+import {toolDateTime,toolDateInput} from './tool-dates.js'
 import {escapeHtml as esc} from '../core/ui.js'
 import {assetInStock,assetStock,assetCountShortage,assetPhysicalAvailable,toolAlerts,toolDueAt} from '../core/tool-management.js'
 
 export const ledgerTypes={ALL:'全部台账',NUMBERED:'有编号工具',BULK:'无编号工具',KIT:'工具套装',LEGACY:'待完善登记'}
 const name=(rows,id)=>rows.find(r=>r.id===id)?.name||'—'
-const dt=v=>v?esc(String(v).replace('T',' ').slice(0,16)):'—'
+const dt=v=>esc(toolDateTime(v))
 const outstanding=line=>line.quantity-line.returned-(line.disposed||0)
 export function returnableQuantity(m,loan,line){
   return Math.max(0,outstanding(line)-m.disposals.filter(r=>r.loanId===loan.id&&r.assetId===line.assetId&&r.status==='PENDING').reduce((n,r)=>n+r.quantity,0))

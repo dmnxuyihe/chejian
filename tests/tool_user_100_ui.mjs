@@ -57,14 +57,14 @@ try{
  }
  // 51–75: 25 distinct record filters across every record type, scope, and query input.
  await open('tool-records');await page.locator('[data-record-kind]').waitFor()
- const kinds=['loans','transfers','inspection','repair','disposals','warnings','events','audit'],scopes=['todo','done','all']
+ const kinds=['loans','transfers','inspection','repair','disposals'],scopes=['todo','done','']
  for(let i=0;i<25;i++){
   const kind=kinds[i%kinds.length],scope=scopes[Math.floor(i/kinds.length)%scopes.length],term=`不存在的查询-${String(i+1).padStart(2,'0')}`
   await page.locator('[data-record-kind]').selectOption(kind)
-  await page.locator('[data-record-scope]').selectOption(scope)
-  await page.locator('[data-record-query]').fill(term)
+  await page.locator('[data-record-status]').selectOption(scope)
+  await page.locator('[data-record-query]').fill(term);await page.locator('[data-record-form] button[type=submit]').click()
   assert.equal(await page.locator('[data-record-kind]').inputValue(),kind)
-  assert.equal(await page.locator('[data-record-scope]').inputValue(),scope)
+  assert.equal(await page.locator('[data-record-status]').inputValue(),scope)
   assert.ok(await page.locator('[data-record-export]').isVisible())
   assert.equal(await page.locator('[data-record-id]').count(),0)
   assert.match(await page.locator('[data-record-actions]').innerText(),/选择一条记录/)

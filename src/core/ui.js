@@ -91,7 +91,7 @@ export function openModal({ title, body, confirmText='确认', cancelText='取�
     catch (error) { toast('操作未完成', error.message || '请重试', 'warning') }
     finally {
       busy = false
-      wrap.querySelector('[data-modal-confirm]').disabled = false
+      wrap.querySelector('[data-modal-confirm]').disabled = !!wrap.confirmBlocked
       wrap.querySelector('[role="dialog"]').removeAttribute('aria-busy')
     }
     if (result !== false) close('confirmed')

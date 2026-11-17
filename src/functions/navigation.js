@@ -20,7 +20,7 @@ export const navigationGroups = [
   {id:'production',...requirementNames.production,icon:'schedule',entries:['schedule','dispatch','workshop-calendar','vehicle','vehicle-control']},
   {id:'operations',...requirementNames.work,icon:'worker',entries:['process','assignment','execution','inspection','acceptance']},
   {id:'components',...requirementNames.components,icon:'package',entries:['component-ledger']},
-  {id:'tools',...requirementNames.tools,icon:'wrench',entries:['tool-register','tool-inventory','tool-records','tool-data']},
+  {id:'tools',...requirementNames.tools,icon:'wrench',entries:['tool-dashboard','tool-register','tool-inventory','tool-records','tool-warnings','tool-data']},
   {id:'digital',...requirementNames.digital,icon:'chart',entries:['execution-tracking']},
   // Supporting pages have no single counterpart in the requirements table.
   {id:'resources',label:'基础资源',icon:'settings',supporting:true,entries:['resources','station-resources','resource-overview']},

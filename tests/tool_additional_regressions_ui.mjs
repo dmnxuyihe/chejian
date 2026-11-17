@@ -43,7 +43,7 @@ try{
  await modal().locator('[data-modal-confirm]').click();await modal().waitFor({state:'detached'});await action('receipt').click()
  const finishedKind=await modal().locator('[data-record-kind]').inputValue(),finishedRows=await modal().locator('[data-record-id]').count();assert.equal(finishedKind,'repair');assert.equal(finishedRows,1);await close()
  findings.push({id:'N07',priority:'P2',title:'送修和维修完成回执均打开正确记录',passed:true,method:'isolated PostgreSQL + browser',observed:{actualBusiness:'REPAIR',sendReceiptKind:sentKind,sendReceiptRows:sentRows,finishReceiptKind:finishedKind,finishReceiptRows:finishedRows},evidence:'07-维修回执正确.png',verified:'回执按每条已保存单据的实际kind定位'})
- await page.goto(base+'/#/functions/assets/tool-records');await page.locator('[data-record-kind]').waitFor();await modal().locator('[data-record-kind]').selectOption('events')
+ await page.goto(base+'/#/functions/assets/tool-records');await page.locator('[data-record-kind]').waitFor();await page.locator('[data-record-audit]').click();await modal().locator('[data-record-kind]').selectOption('events')
  await modal().locator('[data-record-scope]').selectOption('todo');const pending=await modal().locator(`[data-record-id="${error.id}"]`).count()
  assert.equal(pending,0)
  await page.screenshot({path:fileURLToPath(new URL('08-异常处置已办结.png',out))})
@@ -77,10 +77,10 @@ try{
  await post('KIT_SAVE',{code:'PG-KIT',name:'复核套装',lines:[{assetId:c,quantity:1}]})
  browser=await chromium.launch({channel:'msedge',headless:true});const finalPage=await browser.newPage({viewport:{width:1366,height:900}});finalPage.on('pageerror',e=>errors.push(e.message))
  await finalPage.goto(base+'/#/functions/assets/tool-register');await finalPage.locator('[data-tool-table-action="asset-new"]').waitFor()
- const targetRow=finalPage.locator(`[data-tool-row="asset:${received}"]`);assert.match(await targetRow.innerText(),/来源检定机构/)
- await targetRow.locator('[data-tool-detail]').click();await finalPage.locator('[data-tool-detail-tab="service"]').click();assert.match(await finalPage.locator('[data-tool-detail-content]').innerText(),/PG-SOURCE-CERT/)
- await finalPage.screenshot({path:fileURLToPath(new URL('04-来源证书与新台账.png',out))});await finalPage.locator('.modal [data-modal-cancel]').click()
- await finalPage.locator(`[data-tool-check="asset:${c}"]`).check();assert.equal(await finalPage.locator('[data-tool-table-action="transfer"]').isDisabled(),true);assert.match(await finalPage.locator('[data-tool-operation-reason]').allTextContents().then(r=>r.join(' ')),/套装组成/)
+ const targetRow=finalPage.locator(`[data-tool-row="asset:${received}"]`)
+ await targetRow.locator('[data-tool-detail]').first().click();await finalPage.locator('[data-tool-detail-tab="service"]').click();assert.match(await finalPage.locator('[data-tool-detail-content]').innerText(),/PG-SOURCE-CERT/)
+ await finalPage.screenshot({path:fileURLToPath(new URL('04-来源证书与新台账.png',out))});await finalPage.locator('.modal [data-modal-cancel]').click();while(await finalPage.locator('.modal').count())await finalPage.locator('.modal [data-modal-cancel]').click()
+ await finalPage.locator(`[data-tool-check="asset:${c}"]`).check();assert.equal(await finalPage.locator('[data-tool-table-action="transfer"]').count(),0);assert.match(await finalPage.locator('[data-tool-operation-reason]').allTextContents().then(r=>r.join(' ')),/套装组成/)
  assert.ok(await finalPage.locator('.tool-table-state .tool-state').count()>0)
  await finalPage.locator('[name="query"]').fill('AUDIT-REPAIR');await finalPage.locator('[data-tool-query] [type="submit"]').click();assert.match(await finalPage.locator('[data-tool-hidden-selection]').innerText(),/1 项不在当前筛选结果内/)
  await finalPage.locator('[data-tool-reset-query]').click()
@@ -89,7 +89,7 @@ try{
  await finalPage.reload();await finalPage.locator(`[data-tool-check="asset:${a}"]`).check();await finalPage.locator('[data-tool-table-action="service-finish"]').click()
  await finalPage.locator('.modal [data-f="result"]').selectOption('PASS');await finalPage.locator('.modal [data-f="certificate"]').fill('MIXED-CERT');await finalPage.locator('.modal [data-f="actor"]').fill('混批复核员');await finalPage.locator('.modal [data-modal-confirm]').click();await finalPage.locator('.modal').waitFor({state:'detached'})
  assert.equal(await finalPage.locator('[data-tool-receipt-group]').count(),2)
- for(const kind of ['repair','inspection']){await finalPage.locator('[data-tool-receipt-group]').filter({hasText:kind==='repair'?'送修记录':'送检记录'}).click();assert.equal(await finalPage.locator('[data-record-kind]').inputValue(),kind);assert.equal(await finalPage.locator('[data-record-id]').count(),1);await finalPage.locator('.modal [data-modal-cancel]').click()}
+ for(const kind of ['repair','inspection']){await finalPage.locator('[data-tool-receipt-group]').filter({hasText:kind==='repair'?'送修记录':'送检记录'}).click();assert.equal(await finalPage.locator('[data-record-kind]').inputValue(),kind);assert.equal(await finalPage.locator('[data-record-id]').count(),1);await finalPage.locator('.modal [data-modal-cancel]').click();while(await finalPage.locator('.modal').count())await finalPage.locator('.modal [data-modal-cancel]').click()}
  await finalPage.screenshot({path:fileURLToPath(new URL('07-混批回执分别定位.png',out))})
  databaseEvidence.N04={receivedAssetId:received,certificate:'PG-SOURCE-CERT',transferId:move.id,reopened:true};databaseEvidence.N05={explicitZeroStatus:zero.eventStatus,loanMutations:0};databaseEvidence.N06={kitMemberTransferDisabled:true};databaseEvidence.N07={mixedReceiptGroups:2,eachGroupRows:1}
  const approvalOne=await post('DISPOSAL_REQUEST',{assetId:a,quantity:1,kind:'LOST',reason:'合版审批范围甲'}),approvalTwo=await post('DISPOSAL_REQUEST',{assetId:a,quantity:1,kind:'SCRAPPED',reason:'合版审批范围乙'})

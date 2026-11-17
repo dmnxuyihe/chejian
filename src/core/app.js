@@ -8,6 +8,7 @@ import { workspaceArt } from '../shared/workspace-art.js'
 import { createDemoPersistence } from './demo-persistence.js'
 import { createDatabasePersistence } from './database-persistence.js'
 import { demoPath, renderDemoShell } from '../demo/index.js'
+import {ensureLogin,mountAccount} from './auth.js'
 
 export const state = createState()
 // Access can fail in restricted/private browser contexts. Keep the page usable and
@@ -24,6 +25,7 @@ async function initialize() {
     if (!response.ok) throw new Error('无法读取后端配置')
     const config = await response.json()
     if (config.storage === 'postgresql') {
+      await ensureLogin(app)
       demoPersistence = createDatabasePersistence(state, { onStatus: updateSaveStatus, onRemote: () => render(false) })
       const result = await demoPersistence.load()
       if (!result.ok) throw new Error(result.message)
@@ -94,6 +96,7 @@ function roleContext(role,page,demo = null) {
 
 function bindShell(role = null) {
   mountFunctionShell()
+  mountAccount()
   document.querySelector('[data-skip-content]')?.addEventListener('click', event => { event.preventDefault(); document.querySelector('#main-content')?.focus() })
   if (role) document.querySelectorAll('[data-nav]').forEach(btn=>btn.addEventListener('click',()=>enterRole(role.id,btn.dataset.nav)))
   document.querySelectorAll('[data-switch-role]').forEach(btn=>btn.addEventListener('click',()=>go('functions')))
@@ -137,12 +140,13 @@ export function render(persist = true) {
   }
   const entry=route.entry,role=roles[entry.role]
   const pageId=entry.page
-  const canonical=`#/${functionPath(entry)}`
+  const canonical=`#/${functionPath(entry)}${route.params?.size?'?'+route.params.toString():''}`
   if(location.hash!==canonical) history.replaceState(null,'',canonical)
   const page=role.pages[pageId]
   currentRoleId=role.id; currentPageId=pageId
   const ctx=roleContext(role,pageId)
   ctx.functionEntry=entry
+  ctx.functionParams=route.params||new URLSearchParams()
   if(presentationViews[entry.id]) { ctx.demo=true; ctx.demoPage=presentationViews[entry.id] }
   const pageHtml=page.render(ctx)
   app.innerHTML=renderFunctionShell({entry,pageHtml})
